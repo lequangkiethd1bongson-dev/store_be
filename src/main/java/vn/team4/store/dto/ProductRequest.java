@@ -1,12 +1,18 @@
 package vn.team4.store.dto;
 
 public class ProductRequest {
-    private String id;
     private String name;
-    private double import_price;
-    private double selling_price;
-    private double quantity;
+    private double price;
+    private Double oldPrice;
+    private double importPrice;
+    private String barcode;
+    private double rating;
     private String category;
+    private String imageUrl;
+    private String brand;
+    private String packageSize;
+    private String description;
+    private int stock;
 
     public ProductRequest() {
     }
@@ -19,35 +25,91 @@ public class ProductRequest {
         this.name = name;
     }
 
-    public double getImport_price() {
-        return import_price;
-    }
-    
-    public void setImport_price(double import_price) {
-        this.import_price = import_price;
+    public double getPrice() {
+        return price;
     }
 
-    public double getSelling_price() {
-        return selling_price;
+    public void setPrice(double price) {
+        this.price = price;
     }
 
-    public void setSelling_price(double selling_price) {
-        this.selling_price = selling_price;
+    public Double getOldPrice() {
+        return oldPrice;
     }
 
-    public double getQuantity() {
-        return quantity;
+    public void setOldPrice(Double oldPrice) {
+        this.oldPrice = oldPrice;
     }
 
-    public void setQuantity(double quantity) {
-        this.quantity = quantity;
+    public double getImportPrice() {
+        return importPrice;
     }
-    
+
+    public void setImportPrice(double importPrice) {
+        this.importPrice = importPrice;
+    }
+
+    public String getBarcode() {
+        return barcode;
+    }
+
+    public void setBarcode(String barcode) {
+        this.barcode = barcode;
+    }
+
+    public double getRating() {
+        return rating;
+    }
+
+    public void setRating(double rating) {
+        this.rating = rating;
+    }
+
     public String getCategory() {
         return category;
     }
 
     public void setCategory(String category) {
         this.category = category;
+    }
+
+    public String getImageUrl() {
+        return imageUrl;
+    }
+
+    public void setImageUrl(String imageUrl) {
+        this.imageUrl = imageUrl;
+    }
+
+    public String getBrand() {
+        return brand;
+    }
+
+    public void setBrand(String brand) {
+        this.brand = brand;
+    }
+
+    public String getPackageSize() {
+        return packageSize;
+    }
+
+    public void setPackageSize(String packageSize) {
+        this.packageSize = packageSize;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
+    }
+
+    public int getStock() {
+        return stock;
+    }
+
+    public void setStock(int stock) {
+        this.stock = stock;
     }
 }

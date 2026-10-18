@@ -27,14 +27,15 @@ public class ProductService {
             );
         }
 
-        if (request.getImport_price() < 0
-                || request.getQuantity() < 0) {
+        if (request.getImportPrice() < 0
+                || request.getPrice() < 0
+                || request.getStock() < 0) {
             throw new IllegalArgumentException(
                     "Giá và số lượng phải >= 0"
             );
         }
 
-        if (request.getSelling_price() < request.getImport_price()) {
+        if (request.getPrice() < request.getImportPrice()) {
             throw new IllegalArgumentException(
                     "Giá bán phải >= giá nhập"
             );
@@ -43,10 +44,17 @@ public class ProductService {
         Product product = new Product(
                 null,
                 request.getName().trim(),
-                request.getImport_price(),
-                request.getSelling_price(),
-                request.getQuantity(),
-                request.getCategory()
+                request.getPrice(),
+                request.getOldPrice(),
+                request.getImportPrice(),
+                request.getBarcode(),
+                request.getRating(),
+                request.getCategory(),
+                request.getImageUrl(),
+                request.getBrand(),
+                request.getPackageSize(),
+                request.getDescription(),
+                request.getStock()
         );
 
         return repository.save(product);

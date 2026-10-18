@@ -3,21 +3,49 @@ package vn.team4.store.model;
 public class Product {
     private String id;
     private String name;
-    private double import_price;
-    private double selling_price;
-    private double quantity;
+    private double price;
+    private Double oldPrice;
+    private double importPrice;
+    private String barcode;
+    private double rating;
     private String category;
+    private String imageUrl;
+    private String brand;
+    private String packageSize;
+    private String description;
+    private int stock;
 
     public Product() {
     }
 
-    public Product(String id, String name, double import_price, double selling_price, double quantity, String category) {
+    public Product(
+            String id,
+            String name,
+            double price,
+            Double oldPrice,
+            double importPrice,
+            String barcode,
+            double rating,
+            String category,
+            String imageUrl,
+            String brand,
+            String packageSize,
+            String description,
+            int stock
+    ) {
         this.id = id;
         this.name = name;
-        this.import_price = import_price;
-        this.selling_price = selling_price;
-        this.quantity = quantity;
+        this.price = price;
+        this.oldPrice = oldPrice;
+        this.importPrice = importPrice;
+        this.barcode = barcode;
+        this.rating = rating;
         this.category = category;
+        this.imageUrl = imageUrl;
+        this.brand = brand;
+        this.packageSize = packageSize;
+        this.description = description;
+        this.stock = stock;
     }
 
     public String getId() {
@@ -36,28 +64,44 @@ public class Product {
         this.name = name;
     }
 
-    public double getImport_price() {
-        return import_price;
+    public double getPrice() {
+        return price;
     }
 
-    public void setImport_price(double import_price) {
-        this.import_price = import_price;
+    public void setPrice(double price) {
+        this.price = price;
     }
 
-    public double getSelling_price() {
-        return selling_price;
+    public Double getOldPrice() {
+        return oldPrice;
     }
 
-    public void setSelling_price(double selling_price) {
-        this.selling_price = selling_price;
+    public void setOldPrice(Double oldPrice) {
+        this.oldPrice = oldPrice;
     }
 
-    public double getQuantity() {
-        return quantity;
+    public double getImportPrice() {
+        return importPrice;
     }
 
-    public void setQuantity(double quantity) {
-        this.quantity = quantity;
+    public void setImportPrice(double importPrice) {
+        this.importPrice = importPrice;
+    }
+
+    public String getBarcode() {
+        return barcode;
+    }
+
+    public void setBarcode(String barcode) {
+        this.barcode = barcode;
+    }
+
+    public double getRating() {
+        return rating;
+    }
+
+    public void setRating(double rating) {
+        this.rating = rating;
     }
 
     public String getCategory() {
@@ -66,5 +110,45 @@ public class Product {
 
     public void setCategory(String category) {
         this.category = category;
+    }
+
+    public String getImageUrl() {
+        return imageUrl;
+    }
+
+    public void setImageUrl(String imageUrl) {
+        this.imageUrl = imageUrl;
+    }
+
+    public String getBrand() {
+        return brand;
+    }
+
+    public void setBrand(String brand) {
+        this.brand = brand;
+    }
+
+    public String getPackageSize() {
+        return packageSize;
+    }
+
+    public void setPackageSize(String packageSize) {
+        this.packageSize = packageSize;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
+    }
+
+    public int getStock() {
+        return stock;
+    }
+
+    public void setStock(int stock) {
+        this.stock = stock;
     }
 }

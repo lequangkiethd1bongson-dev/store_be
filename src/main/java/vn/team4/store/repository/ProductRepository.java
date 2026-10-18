@@ -30,13 +30,79 @@ public class ProductRepository {
         for (QueryDocumentSnapshot document
                 : snapshot.getDocuments()) {
 
-            Product product = document.toObject(Product.class);
+            Product product = toProduct(document);
             product.setId(document.getId());
 
             products.add(product);
         }
 
         return products;
+    }
+
+    private Product toProduct(QueryDocumentSnapshot document) {
+        Product product = new Product();
+        product.setName(stringValue(document, "name"));
+        product.setPrice(numberValue(document, "price"));
+        product.setOldPrice(nullableNumberValue(document, "oldPrice"));
+        product.setImportPrice(numberValue(document, "importPrice"));
+        product.setBarcode(barcodeValue(document));
+        product.setRating(numberValue(document, "rating"));
+        product.setCategory(stringValue(document, "category"));
+        product.setImageUrl(stringValue(document, "imageUrl"));
+        product.setBrand(stringValue(document, "brand"));
+        product.setPackageSize(stringValue(document, "packageSize"));
+        product.setDescription(stringValue(document, "description"));
+        product.setStock((int) numberValue(document, "stock"));
+        return product;
+    }
+
+    private String stringValue(QueryDocumentSnapshot document, String field) {
+        Object value = document.get(field);
+        if (value == null || value instanceof String) {
+            return (String) value;
+        }
+        throw new IllegalStateException(
+                "Firestore field '%s' must be a string".formatted(field)
+        );
+    }
+
+    private double numberValue(QueryDocumentSnapshot document, String field) {
+        Object value = document.get(field);
+        if (value == null) {
+            return 0;
+        }
+        if (value instanceof Number number) {
+            return number.doubleValue();
+        }
+        throw new IllegalStateException(
+                "Firestore field '%s' must be numeric".formatted(field)
+        );
+    }
+
+    private Double nullableNumberValue(QueryDocumentSnapshot document, String field) {
+        Object value = document.get(field);
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Number number) {
+            return number.doubleValue();
+        }
+        throw new IllegalStateException(
+                "Firestore field '%s' must be numeric".formatted(field)
+        );
+    }
+
+    private String barcodeValue(QueryDocumentSnapshot document) {
+        Object barcode = document.get("barcode");
+        if (barcode == null || barcode instanceof String) {
+            return (String) barcode;
+        }
+        if (barcode instanceof Number) {
+            return barcode.toString();
+        }
+        throw new IllegalStateException(
+                "Firestore field 'barcode' must be a string or number"
+        );
     }
 
     public Product save(Product product) throws Exception {
