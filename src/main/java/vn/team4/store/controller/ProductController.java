@@ -1,4 +1,5 @@
 package vn.team4.store.controller;
+import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -24,7 +25,7 @@ public class ProductController {
 
     @PostMapping
     public ResponseEntity<Product> create(
-            @RequestBody ProductRequest request
+            @Valid @RequestBody ProductRequest request
     ) throws Exception {
 
         Product product = service.create(request);

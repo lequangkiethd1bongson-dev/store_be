@@ -1,6 +1,10 @@
 package vn.team4.store.dto;
 
+import jakarta.validation.constraints.Pattern;
+
 public class ProductRequest {
+    @Pattern(regexp = "^[^/]+$")
+    private String id;
     private String name;
     private double price;
     private Double oldPrice;
@@ -15,6 +19,14 @@ public class ProductRequest {
     private int stock;
 
     public ProductRequest() {
+    }
+
+    public String getId() {
+        return id;
+    }
+
+    public void setId(String id) {
+        this.id = id;
     }
 
     public String getName() {

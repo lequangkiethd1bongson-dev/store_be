@@ -20,6 +20,7 @@ public class UserController {
 
     @PostMapping("/login")
     public UserResponse login(@Valid @RequestBody LoginRequest request) throws Exception {
+        System.out.println("[LOGIN] Backend đã nhận request");
         return UserResponse.from(service.login(request));
-    }
+    } 
 }

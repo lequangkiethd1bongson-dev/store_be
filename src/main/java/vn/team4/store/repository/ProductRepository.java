@@ -106,14 +106,20 @@ public class ProductRepository {
     }
 
     public Product save(Product product) throws Exception {
-        DocumentReference document = firestore
-                .collection("products")
-                .document();
+        return save(product, product.getId());
+    }
+
+    public Product save(Product product, String requestedId) throws Exception {
+        DocumentReference generatedDocument = firestore.collection("products").document();
+        DocumentReference document = requestedId == null || requestedId.isBlank()
+                ? generatedDocument
+                : firestore.collection("products").document(requestedId.trim());
 
         product.setId(document.getId());
 
-        document.set(product).get();
+        document.create(product).get();
 
         return product;
-    } 
+    }
+
 }

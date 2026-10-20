@@ -1,6 +1,8 @@
 package vn.team4.store.service;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 import vn.team4.store.dto.ProductRequest;
 import vn.team4.store.model.Product;
 import vn.team4.store.repository.ProductRepository;
@@ -42,7 +44,7 @@ public class ProductService {
         }
 
         Product product = new Product(
-                null,
+                request.getId(),
                 request.getName().trim(),
                 request.getPrice(),
                 request.getOldPrice(),
@@ -57,6 +59,28 @@ public class ProductService {
                 request.getStock()
         );
 
-        return repository.save(product);
+        try {
+            return repository.save(product, request.getId());
+        } catch (Exception exception) {
+            if (isAlreadyExists(exception)) {
+                throw new ResponseStatusException(
+                        HttpStatus.CONFLICT,
+                        "Product already exists: " + request.getId(),
+                        exception
+                );
+            }
+            throw exception;
+        }
+    }
+
+    private boolean isAlreadyExists(Throwable exception) {
+        Throwable cause = exception;
+        while (cause != null) {
+            if (cause instanceof com.google.api.gax.rpc.AlreadyExistsException) {
+                return true;
+            }
+            cause = cause.getCause();
+        }
+        return false;
     }
 }

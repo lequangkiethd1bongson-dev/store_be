@@ -5,6 +5,8 @@ import com.google.cloud.firestore.annotation.PropertyName;
 public class User {
     public static final String ROLE_KHO = "kho";
     public static final String ROLE_SALE = "sale";
+    public static final String ROLE_STAFF = "staff";
+    public static final String ROLE_WAREHOUSE_STAFF = "warehouse_staff";
 
     // private String id;
     private String email;
@@ -42,10 +44,29 @@ public class User {
     }
 
     public void setRole(String role) {
-        if (role != null && !ROLE_KHO.equals(role) && !ROLE_SALE.equals(role)) {
-            throw new IllegalArgumentException("Role must be 'kho' or 'sale'");
+        if (role != null
+                && !ROLE_KHO.equalsIgnoreCase(role)
+                && !ROLE_SALE.equalsIgnoreCase(role)
+                && !ROLE_STAFF.equalsIgnoreCase(role)
+                && !ROLE_WAREHOUSE_STAFF.equalsIgnoreCase(role)) {
+            throw new IllegalArgumentException(
+                    "Role must be 'kho', 'sale', 'staff' or 'warehouse_staff'"
+            );
         }
         this.role = role;
+    }
+
+    public boolean isWarehouseStaff() {
+        return ROLE_KHO.equalsIgnoreCase(role)
+                || ROLE_WAREHOUSE_STAFF.equalsIgnoreCase(role);
+    }
+
+    public boolean isStaff() {
+        return ROLE_STAFF.equalsIgnoreCase(role);
+    }
+
+    public boolean isSalesStaff() {
+        return ROLE_SALE.equalsIgnoreCase(role);
     }
 
     @PropertyName("user_name")

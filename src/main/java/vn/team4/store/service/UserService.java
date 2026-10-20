@@ -71,8 +71,9 @@ public class UserService {
 
         log.info("Firestore profile found: UID={}, role={}", uid, role);
 
-        if (!User.ROLE_KHO.equals(role)
-                && !User.ROLE_SALE.equals(role)) {
+        if (!user.isWarehouseStaff()
+                && !user.isStaff()
+                && !user.isSalesStaff()) {
 
             log.warn(
                     "Login denied: unsupported role '{}' for UID={}",
