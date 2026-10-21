@@ -4,6 +4,16 @@ server.address: 0.0.0.0
 spring:
   application:
     name: store-be
+  spring:
+  datasource:
+    url: ${SUPABASE_DB_URL}
+    username: ${SUPABASE_DB_USERNAME}
+    password: ${SUPABASE_DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
 
 management:
   endpoints:
