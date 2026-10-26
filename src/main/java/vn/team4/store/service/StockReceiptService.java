@@ -20,16 +20,31 @@ public class StockReceiptService {
     }
 
     public StockReceiptResponse receive(StockReceiptRequest request) throws Exception {
-        String productId = request.getProductId().trim();
-        DocumentReference productRef = firestore.collection("products")
+        if (request == null) {
+            throw new IllegalArgumentException("Request must not be null");
+        }
+
+        String originalProductId = request.getProductId();
+        if (originalProductId == null || originalProductId.trim().isEmpty()) {
+            throw new IllegalArgumentException("Product ID must not be blank");
+        }
+
+        int originalQuantity = request.getQuantity();
+        if (originalQuantity <= 0) {
+            throw new IllegalArgumentException("Quantity must be greater than 0");
+        }
+
+        final String productId = originalProductId.trim();
+        final int quantity = originalQuantity;
+        final DocumentReference productRef = firestore.collection("products")
                 .document(productId);
-        DocumentReference receiptRef = firestore.collection("stockReceipts")
+        final DocumentReference receiptRef = firestore.collection("stockReceipts")
                 .document();
-        String createdAt = Instant.now().toString();
+        final String createdAt = Instant.now().toString();
 
         return firestore.runTransaction(transaction -> {
             DocumentSnapshot productSnapshot = transaction.get(productRef).get();
-            int currentStock = 0;
+            long currentStock = 0L;
 
             if (productSnapshot.exists()) {
                 Object stockValue = productSnapshot.get("stock");
@@ -48,11 +63,18 @@ public class StockReceiptService {
                                         + productId
                         );
                     }
-                    currentStock = (int) stockLong;
+                    currentStock = stockLong;
                 }
             }
 
-            int stockAfter = Math.addExact(currentStock, request.getQuantity());
+            long stockAfterLong = Math.addExact(currentStock, quantity);
+            if (stockAfterLong < Integer.MIN_VALUE || stockAfterLong > Integer.MAX_VALUE) {
+                throw new IllegalStateException(
+                        "Stock after receiving for product " + productId + " exceeds the supported range"
+                );
+            }
+            int stockAfter = Math.toIntExact(stockAfterLong);
+
             if (productSnapshot.exists()) {
                 transaction.update(productRef, "stock", stockAfter);
             } else {
@@ -67,7 +89,7 @@ public class StockReceiptService {
             StockReceiptResponse receipt = new StockReceiptResponse(
                     receiptRef.getId(),
                     productId,
-                    request.getQuantity(),
+                    quantity,
                     stockAfter,
                     createdAt
             );

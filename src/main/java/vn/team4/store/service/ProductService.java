@@ -153,6 +153,14 @@ public class ProductService {
         if (name == null) return null;
 
         return brandRepository.findByNameIgnoreCase(name)
+                .map(brand -> {
+                    if (!brand.isActive()) {
+                        throw new ResponseStatusException(
+                                HttpStatus.BAD_REQUEST,
+                                "Không thể gán thương hiệu đã ẩn cho sản phẩm: " + name);
+                    }
+                    return brand;
+                })
                 .orElseGet(() -> brandRepository.saveAndFlush(new BrandEntity(name)));
     }
 
