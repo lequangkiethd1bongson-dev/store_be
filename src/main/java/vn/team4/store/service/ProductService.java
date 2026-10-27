@@ -2,6 +2,7 @@ package vn.team4.store.service;
 
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -29,6 +30,7 @@ import java.util.UUID;
 public class ProductService {
 
     private final ProductRepository productRepository;
+    private final JdbcTemplate jdbcTemplate;
     private final CategoryRepository categoryRepository;
     private final BrandRepository brandRepository;
     private final WarehouseRepository warehouseRepository;
@@ -36,11 +38,13 @@ public class ProductService {
 
     public ProductService(
             ProductRepository productRepository,
+            JdbcTemplate jdbcTemplate,
             CategoryRepository categoryRepository,
             BrandRepository brandRepository,
             WarehouseRepository warehouseRepository,
             WarehouseStockRepository warehouseStockRepository) {
         this.productRepository = productRepository;
+        this.jdbcTemplate = jdbcTemplate;
         this.categoryRepository = categoryRepository;
         this.brandRepository = brandRepository;
         this.warehouseRepository = warehouseRepository;
@@ -55,10 +59,39 @@ public class ProductService {
     public List<Product> getAllProducts(UUID warehouseId) {
         Map<UUID, Integer> stockByProduct = loadStockByProduct(warehouseId);
 
-        return productRepository.findAllActiveWithCategoryAndBrand().stream()
-                .map(entity -> toApiProduct(
-                        entity, stockByProduct.getOrDefault(entity.getId(), 0)))
-                .toList();
+        return jdbcTemplate.query(
+                """
+                SELECT p.id, p.name, p.price, p.old_price, p.import_price,
+                       p.barcode, p.rating, c.name AS category_name,
+                       p.image_url, b.name AS brand_name,
+                       p.package_size, p.description
+                FROM public.products p
+                LEFT JOIN public.categories c ON c.id = p.category_id
+                LEFT JOIN public.brands b ON b.id = p.brand_id
+                WHERE p.is_active = true
+                ORDER BY p.name ASC
+                """,
+                (rs, rowNum) -> {
+                    UUID productId = rs.getObject("id", UUID.class);
+                    BigDecimal price = rs.getBigDecimal("price");
+                    BigDecimal oldPrice = rs.getBigDecimal("old_price");
+                    BigDecimal importPrice = rs.getBigDecimal("import_price");
+                    BigDecimal rating = rs.getBigDecimal("rating");
+                    return new Product(
+                            productId.toString(),
+                            rs.getString("name"),
+                            price == null ? 0 : price.doubleValue(),
+                            oldPrice == null ? null : oldPrice.doubleValue(),
+                            importPrice == null ? 0 : importPrice.doubleValue(),
+                            rs.getString("barcode"),
+                            rating == null ? 0 : rating.doubleValue(),
+                            rs.getString("category_name"),
+                            rs.getString("image_url"),
+                            rs.getString("brand_name"),
+                            rs.getString("package_size"),
+                            rs.getString("description"),
+                            stockByProduct.getOrDefault(productId, 0));
+                });
     }
 
     @Transactional

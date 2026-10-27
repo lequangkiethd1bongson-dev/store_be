@@ -23,6 +23,7 @@ public class WarehouseController {
     public List<WarehouseResponse> getAll() {
         return warehouseRepository.findAll()
                 .stream()
+                .filter(WarehouseEntity::isActive)
                 .map(warehouse -> new WarehouseResponse(
                         warehouse.getId().toString(),
                         warehouse.getName()

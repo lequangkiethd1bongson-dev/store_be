@@ -2,6 +2,7 @@
 package vn.team4.store.service;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.jdbc.core.JdbcTemplate;
 import vn.team4.store.dto.ProductRequest;
 import vn.team4.store.model.BrandEntity;
 import vn.team4.store.model.CategoryEntity;
@@ -29,6 +30,7 @@ class ProductServiceTest {
     void createPersistsProductAndInitialWarehouseStock() {
         // Mock 5 repository mà ProductService hiện yêu cầu
         ProductRepository productRepository = mock(ProductRepository.class);
+        JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
         CategoryRepository categoryRepository = mock(CategoryRepository.class);
         BrandRepository brandRepository = mock(BrandRepository.class);
         WarehouseRepository warehouseRepository = mock(WarehouseRepository.class);
@@ -37,6 +39,7 @@ class ProductServiceTest {
 
         ProductService service = new ProductService(
                 productRepository,
+                jdbcTemplate,
                 categoryRepository,
                 brandRepository,
                 warehouseRepository,

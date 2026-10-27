@@ -2,7 +2,14 @@ package com.example.storebe;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 import com.example.storebe.StoreBeApplication;
+
+import java.util.Set;
+import java.util.stream.Collectors;
+
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest(
         classes = StoreBeApplication.class,
@@ -18,7 +25,27 @@ import com.example.storebe.StoreBeApplication;
 )
 class StoreBeApplicationTests {
 
+    @Autowired
+    private RequestMappingHandlerMapping requestMappingHandlerMapping;
+
     @Test
     void contextLoads() {
+    }
+
+    @Test
+    void storeAndWarehouseRestockRoutesAreRegistered() {
+        Set<String> paths = requestMappingHandlerMapping.getHandlerMethods().keySet().stream()
+                .flatMap(mapping -> mapping.getPatternValues().stream())
+                .collect(Collectors.toSet());
+
+        assertTrue(paths.contains("/api/store/products"));
+        assertTrue(paths.contains("/api/store/restock-requests"));
+        assertTrue(paths.contains("/api/store/restock-requests/{requestId}"));
+        assertTrue(paths.contains("/api/store/stock-exports/{exportId}/confirm-receipt"));
+        assertTrue(paths.contains("/api/warehouse/restock-requests"));
+        assertTrue(paths.contains("/api/warehouse/restock-requests/{requestId}"));
+        assertTrue(paths.contains("/api/warehouse/restock-requests/{requestId}/approve"));
+        assertTrue(paths.contains("/api/warehouse/restock-requests/{requestId}/reject"));
+        assertTrue(paths.contains("/api/warehouse/restock-requests/{requestId}/export"));
     }
 }

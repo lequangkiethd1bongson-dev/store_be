@@ -152,6 +152,30 @@ public class SecurityConfig {
                                 "WAREHOUSE_STAFF"
                         )
 
+                        .requestMatchers(HttpMethod.GET, "/api/store/products")
+                        .hasAnyRole("STORE_MANAGER", "SALES")
+
+                        .requestMatchers(HttpMethod.GET, "/api/store/restock-requests/**")
+                        .hasRole("STORE_MANAGER")
+
+                        .requestMatchers(HttpMethod.POST, "/api/store/restock-requests")
+                        .hasRole("STORE_MANAGER")
+
+                        .requestMatchers(HttpMethod.POST, "/api/store/stock-exports/**/confirm-receipt")
+                        .hasRole("STORE_MANAGER")
+
+                        .requestMatchers(HttpMethod.GET, "/api/warehouse/restock-requests/**")
+                        .hasAnyRole("KHO_MANAGER", "KHO")
+
+                        .requestMatchers(HttpMethod.POST, "/api/warehouse/restock-requests/**/approve")
+                        .hasAnyRole("KHO_MANAGER", "KHO")
+
+                        .requestMatchers(HttpMethod.POST, "/api/warehouse/restock-requests/**/reject")
+                        .hasAnyRole("KHO_MANAGER", "KHO")
+
+                        .requestMatchers(HttpMethod.POST, "/api/warehouse/restock-requests/**/export")
+                        .hasAnyRole("KHO_MANAGER", "KHO")
+
                         // Tạo sản phẩm
                         .requestMatchers(HttpMethod.POST, "/api/products")
                         .hasAnyRole(
