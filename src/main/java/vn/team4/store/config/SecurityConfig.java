@@ -161,20 +161,23 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/store/restock-requests")
                         .hasRole("STORE_MANAGER")
 
-                        .requestMatchers(HttpMethod.POST, "/api/store/stock-exports/**/confirm-receipt")
+                        .requestMatchers(HttpMethod.POST, "/api/store/stock-exports/{exportId}/confirm-receipt")
                         .hasRole("STORE_MANAGER")
 
-                        .requestMatchers(HttpMethod.GET, "/api/warehouse/restock-requests/**")
-                        .hasAnyRole("KHO_MANAGER", "KHO")
+                        .requestMatchers(HttpMethod.GET, "/api/warehouse/restock-requests")
+                        .hasRole("KHO_MANAGER")
 
-                        .requestMatchers(HttpMethod.POST, "/api/warehouse/restock-requests/**/approve")
-                        .hasAnyRole("KHO_MANAGER", "KHO")
+                        .requestMatchers(HttpMethod.GET, "/api/warehouse/restock-requests/{requestId}")
+                        .hasRole("KHO_MANAGER")
 
-                        .requestMatchers(HttpMethod.POST, "/api/warehouse/restock-requests/**/reject")
-                        .hasAnyRole("KHO_MANAGER", "KHO")
+                        .requestMatchers(HttpMethod.POST, "/api/warehouse/restock-requests/{requestId}/approve")
+                        .hasRole("KHO_MANAGER")
 
-                        .requestMatchers(HttpMethod.POST, "/api/warehouse/restock-requests/**/export")
-                        .hasAnyRole("KHO_MANAGER", "KHO")
+                        .requestMatchers(HttpMethod.POST, "/api/warehouse/restock-requests/{requestId}/reject")
+                        .hasRole("KHO_MANAGER")
+
+                        .requestMatchers(HttpMethod.POST, "/api/warehouse/restock-requests/{requestId}/export")
+                        .hasRole("KHO_MANAGER")
 
                         // Tạo sản phẩm
                         .requestMatchers(HttpMethod.POST, "/api/products")

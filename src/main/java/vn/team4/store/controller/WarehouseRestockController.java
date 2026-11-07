@@ -2,12 +2,7 @@ package vn.team4.store.controller;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import vn.team4.store.service.WarehouseRestockService;
 
 import java.util.List;
@@ -26,9 +21,11 @@ public class WarehouseRestockController {
     @GetMapping("/restock-requests")
     public List<WarehouseRestockService.RestockRequestSummaryResponse> listRequests(
             Authentication authentication,
-            @RequestParam(required = false) String status
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size
     ) {
-        return warehouseRestockService.listRequests(authentication, status);
+        return warehouseRestockService.listRequests(authentication, status, page, size);
     }
 
     @GetMapping("/restock-requests/{requestId}")
@@ -42,18 +39,21 @@ public class WarehouseRestockController {
     @PostMapping("/restock-requests/{requestId}/approve")
     public ResponseEntity<WarehouseRestockService.ApproveResult> approveRequest(
             Authentication authentication,
-            @PathVariable UUID requestId
+            @PathVariable UUID requestId,
+            @RequestBody(required = false) WarehouseRestockService.ApproveRequest request
     ) {
-        return ResponseEntity.ok(warehouseRestockService.approveRequest(authentication, requestId));
+        return ResponseEntity.ok(warehouseRestockService.approveRequest(authentication, requestId, request));
     }
 
     @PostMapping("/restock-requests/{requestId}/reject")
     public ResponseEntity<WarehouseRestockService.RejectResult> rejectRequest(
             Authentication authentication,
             @PathVariable UUID requestId,
+            @RequestBody(required = false) WarehouseRestockService.RejectRequest request,
             @RequestParam(required = false) String reason
     ) {
-        return ResponseEntity.ok(warehouseRestockService.rejectRequest(authentication, requestId, reason));
+        String finalReason = request != null && request.reason() != null ? request.reason() : reason;
+        return ResponseEntity.ok(warehouseRestockService.rejectRequest(authentication, requestId, finalReason));
     }
 
     @PostMapping("/restock-requests/{requestId}/export")

@@ -9,7 +9,10 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 import vn.team4.store.model.EmployeeContext;
 
+import java.sql.Timestamp;
+import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -142,7 +145,7 @@ public class StoreRestockService {
                 rs.getString("warehouse_name"),
                 rs.getString("status"),
                 rs.getString("note"),
-                rs.getObject("created_at", OffsetDateTime.class),
+                toOffsetDateTime(rs.getTimestamp("created_at")),
                 rs.getInt("item_count"),
                 rs.getString("export_id") == null ? null : UUID.fromString(rs.getString("export_id")),
                 rs.getString("export_status")
@@ -214,8 +217,8 @@ public class StoreRestockService {
                 String.valueOf(row.get("status")),
                 row.get("note") == null ? null : String.valueOf(row.get("note")),
                 row.get("reject_reason") == null ? null : String.valueOf(row.get("reject_reason")),
-                row.get("created_at") == null ? null : (OffsetDateTime) row.get("created_at"),
-                row.get("approved_at") == null ? null : (OffsetDateTime) row.get("approved_at"),
+                toOffsetDateTime(row.get("created_at")),
+                toOffsetDateTime(row.get("approved_at")),
                 row.get("approved_by") == null ? null : UUID.fromString(String.valueOf(row.get("approved_by"))),
                 items,
                 exportRow == null ? null : UUID.fromString(String.valueOf(exportRow.get("id"))),
@@ -306,6 +309,25 @@ public class StoreRestockService {
         }
 
         return new ReceiptConfirmationResponse(exportId, "delivered");
+    }
+
+    private OffsetDateTime toOffsetDateTime(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof OffsetDateTime offsetDateTime) {
+            return offsetDateTime;
+        }
+        if (value instanceof Timestamp timestamp) {
+            return timestamp.toInstant().atOffset(ZoneOffset.UTC);
+        }
+        if (value instanceof Instant instant) {
+            return instant.atOffset(ZoneOffset.UTC);
+        }
+        if (value instanceof java.time.LocalDateTime localDateTime) {
+            return localDateTime.atOffset(ZoneOffset.UTC);
+        }
+        return OffsetDateTime.parse(String.valueOf(value));
     }
 
     public record RestockRequestCreateRequest(UUID warehouseId, String note, List<RestockRequestLineRequest> items) {

@@ -95,6 +95,17 @@ public class EmployeeContextService {
         return employee;
     }
 
+    public EmployeeContext requireWarehouseManager(Authentication authentication) {
+        EmployeeContext employee = requireAuthenticatedEmployee(authentication);
+        if (!"kho_manager".equals(employee.role())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Chỉ kho manager mới được thực hiện thao tác này");
+        }
+        if (employee.warehouseId() == null) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Tài khoản kho manager chưa được gán kho");
+        }
+        return employee;
+    }
+
     public EmployeeContext requireWarehouseManagerOrStaff(Authentication authentication) {
         EmployeeContext employee = requireAuthenticatedEmployee(authentication);
         if (!Set.of("kho_manager", "kho").contains(employee.role())) {

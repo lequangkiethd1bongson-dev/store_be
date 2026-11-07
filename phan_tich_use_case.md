@@ -127,7 +127,7 @@ Tài khoản mới đăng ký mặc định **chưa kích hoạt** và không c�
   3. Với từng dòng có số lượng duyệt lớn hơn 0, hệ thống trừ tồn kho và tạo dòng chi tiết phiếu xuất.
   4. Phiếu yêu cầu chuyển sang **exported**.
   5. Kho giao hàng đến cửa hàng.
-- **Luồng ngoại lệ:** nếu bất kỳ dòng nào không đủ tồn kho, toàn bộ thao tác bị huỷ và không có tồn kho nào bị trừ; phiếu không có dòng nào được duyệt thì báo lỗi; phiếu đã xuất rồi thì không xuất lại được.
+- **Luồng ngoại lệ:** nếu bất kỳ dòng nào không đủ tồn kho, toàn bộ thao tác bị huỷ và không có tồn kho nào bị trừ; phiếu không có dòng nào được duyệt thì báo lỗi; phiếu đã xuất rồi thì không xuất lại được. Sau lần xuất thất bại do thiếu tồn, quản lý kho có thể huỷ phiếu approved chưa có phiếu xuất; phiếu chuyển sang **rejected**, lưu lý do và không thay đổi tồn kho.
 - **Hậu điều kiện:** tồn kho giảm đúng bằng số lượng duyệt (có thể ít hơn số lượng cửa hàng yêu cầu). Tồn kệ cửa hàng **chưa** thay đổi.
 
 ### UC18 - Xác nhận nhận hàng
@@ -351,7 +351,7 @@ Ký hiệu: C = có quyền, - = không có quyền. Quyền của nhân viên l
 
 ## 12. Phạm vi chưa làm và hướng mở rộng
 
-- Huỷ hoặc sửa phiếu yêu cầu sau khi gửi; hoàn trả và huỷ hoá đơn.
+- Huỷ hoặc sửa phiếu yêu cầu sau khi đã xuất/nhận; hoàn trả và huỷ hoá đơn. Phiếu pending hoặc approved chưa xuất có thể bị từ chối/huỷ theo lý do.
 - Kiểm kê kho, chuyển hàng giữa các kho, xử lý chênh lệch khi nhận hàng.
 - Sổ kho ghi từng lần biến động số lượng để truy vết lịch sử.
 - Xuất kho theo lô và hạn sử dụng (FEFO); hiện số lô và hạn sử dụng mới chỉ được lưu ở phiếu nhập.
