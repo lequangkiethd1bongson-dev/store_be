@@ -1,14 +1,22 @@
 package vn.team4.store.service;
 
+import jakarta.validation.Validation;
+import jakarta.validation.Validator;
+import jakarta.validation.ValidatorFactory;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.Authentication;
+import vn.team4.store.dto.GoodsReceiptItemRequest;
+import vn.team4.store.dto.GoodsReceiptRequest;
 import vn.team4.store.model.EmployeeContext;
 
+import java.math.BigDecimal;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -46,5 +54,25 @@ class WarehouseRestockServiceTest {
                 reason,
                 requestId
         );
+    }
+
+    @Test
+    void goodsReceiptRequestRejectsMissingSupplierOrNonPositiveImportPrice() {
+        ValidatorFactory factory = Validation.buildDefaultValidatorFactory();
+        Validator validator = factory.getValidator();
+
+        GoodsReceiptRequest request = new GoodsReceiptRequest(
+                null,
+                "note",
+                List.of(new GoodsReceiptItemRequest(
+                        UUID.randomUUID(),
+                        5,
+                        BigDecimal.ZERO,
+                        null,
+                        null
+                ))
+        );
+
+        assertFalse(validator.validate(request).isEmpty());
     }
 }

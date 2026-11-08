@@ -115,14 +115,26 @@ public class WarehouseRestockService {
                            r.note,
                            r.reject_reason,
                            r.created_by,
-                           e.full_name AS created_by_name,
+                           ec.full_name AS created_by_name,
                            r.approved_by,
+                           ea.full_name AS approved_by_name,
+                           ex.id AS export_id,
+                           ex.status AS export_status,
+                           ex.created_at AS export_created_at,
+                           ex.received_at,
+                           er.full_name AS received_by_name,
+                           ex.created_by AS export_created_by_id,
+                           ee.full_name AS export_created_by_name,
                            r.created_at,
                            r.approved_at
                     FROM public.restock_requests r
                     JOIN public.stores s ON s.id = r.store_id
                     JOIN public.warehouses w ON w.id = r.warehouse_id
-                    LEFT JOIN public.employees e ON e.id = r.created_by
+                    LEFT JOIN public.employees ec ON ec.id = r.created_by
+                    LEFT JOIN public.employees ea ON ea.id = r.approved_by
+                    LEFT JOIN public.stock_exports ex ON ex.request_id = r.id
+                    LEFT JOIN public.employees ee ON ee.id = ex.created_by
+                    LEFT JOIN public.employees er ON er.id = ex.received_by
                     WHERE r.id = ? AND r.warehouse_id = ?
                     """,
                     requestId,
@@ -138,6 +150,7 @@ public class WarehouseRestockService {
                        p.name AS product_name,
                        p.barcode,
                        p.image_url,
+                       p.package_size AS unit,
                        p.is_active,
                        i.requested_quantity,
                        i.approved_quantity,
@@ -153,6 +166,7 @@ public class WarehouseRestockService {
                         rs.getString("product_name"),
                         rs.getString("barcode"),
                         rs.getString("image_url"),
+                        rs.getString("unit"),
                         rs.getInt("requested_quantity"),
                         (Integer) rs.getObject("approved_quantity"),
                         rs.getInt("warehouse_stock_quantity"),
@@ -161,16 +175,6 @@ public class WarehouseRestockService {
                 employee.warehouseId(),
                 requestId
         );
-
-        Map<String, Object> exportRow = null;
-        try {
-            exportRow = jdbcTemplate.queryForMap(
-                    "SELECT id, status FROM public.stock_exports WHERE request_id = ?",
-                    requestId
-            );
-        } catch (EmptyResultDataAccessException ignored) {
-            // no export
-        }
 
         return new RestockRequestDetailResponse(
                 UUID.fromString(String.valueOf(row.get("id"))),
@@ -184,11 +188,16 @@ public class WarehouseRestockService {
                 row.get("created_by") == null ? null : UUID.fromString(String.valueOf(row.get("created_by"))),
                 row.get("created_by_name") == null ? null : String.valueOf(row.get("created_by_name")),
                 row.get("approved_by") == null ? null : UUID.fromString(String.valueOf(row.get("approved_by"))),
+                row.get("approved_by_name") == null ? null : String.valueOf(row.get("approved_by_name")),
+                row.get("export_created_by_name") == null ? null : String.valueOf(row.get("export_created_by_name")),
+                row.get("received_by_name") == null ? null : String.valueOf(row.get("received_by_name")),
                 toOffsetDateTime(row.get("created_at")),
                 toOffsetDateTime(row.get("approved_at")),
                 items,
-                exportRow == null ? null : UUID.fromString(String.valueOf(exportRow.get("id"))),
-                exportRow == null ? null : String.valueOf(exportRow.get("status"))
+                row.get("export_id") == null ? null : UUID.fromString(String.valueOf(row.get("export_id"))),
+                row.get("export_status") == null ? null : String.valueOf(row.get("export_status")),
+                toOffsetDateTime(row.get("export_created_at")),
+                toOffsetDateTime(row.get("received_at"))
         );
     }
 
@@ -315,8 +324,12 @@ public class WarehouseRestockService {
         return new RejectResult(requestId, "rejected");
     }
 
-    @Transactional
     public ExportResult exportRequest(Authentication authentication, UUID requestId) {
+        return exportRequest(authentication, requestId, null);
+    }
+
+    @Transactional
+    public ExportResult exportRequest(Authentication authentication, UUID requestId, ExportRequest request) {
         EmployeeContext employee = employeeContextService.requireWarehouseManager(authentication);
 
         Map<String, Object> requestRow;
@@ -337,13 +350,20 @@ public class WarehouseRestockService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Chỉ có thể xuất kho cho phiếu đã duyệt");
         }
 
-        Integer existingExportCount = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM public.stock_exports WHERE request_id = ?",
-                Integer.class,
-                requestId
-        );
-        if (existingExportCount != null && existingExportCount > 0) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Phiếu yêu cầu đã có phiếu xuất, không được xuất lại");
+        Map<String, Object> existingExport = null;
+        try {
+            existingExport = jdbcTemplate.queryForMap(
+                    "SELECT id, status FROM public.stock_exports WHERE request_id = ? ORDER BY created_at DESC LIMIT 1",
+                    requestId
+            );
+        } catch (EmptyResultDataAccessException ignored) {
+            // no export yet
+        }
+        if (existingExport != null) {
+            return new ExportResult(
+                    UUID.fromString(String.valueOf(existingExport.get("id"))),
+                    String.valueOf(existingExport.get("status"))
+            );
         }
 
         List<Map<String, Object>> approvedItems = jdbcTemplate.queryForList(
@@ -353,6 +373,15 @@ public class WarehouseRestockService {
         if (approvedItems.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Không có sản phẩm nào được duyệt để xuất kho");
         }
+
+        if (request == null || request.scannedItems() == null || request.scannedItems().isEmpty()) {
+            throw new WarehouseExportValidationException(
+                    "SCAN_INCOMPLETE",
+                    "Chưa kiểm tra đủ số lượng sản phẩm.",
+                    java.util.List.of()
+            );
+        }
+        validateScannedItems(requestId, request.scannedItems(), approvedItems, employee.warehouseId());
 
         for (Map<String, Object> item : approvedItems) {
             UUID productId = UUID.fromString(String.valueOf(item.get("product_id")));
@@ -426,7 +455,159 @@ public class WarehouseRestockService {
             throw ex;
         }
 
-        return new ExportResult(exportId, "shipping");
+        return new ExportResult(exportId, requestId, "shipping", "exported", approvedItems.size(), approvedItems.stream().mapToInt(item -> ((Number) item.get("approved_quantity")).intValue()).sum(), java.util.List.<ExportItemSummary>of());
+    }
+
+    private void validateScannedItems(UUID requestId, List<ScanItem> scannedItems, List<Map<String, Object>> approvedItems, UUID warehouseId) {
+        Map<String, Integer> scannedTotals = new java.util.HashMap<>();
+        for (ScanItem scannedItem : scannedItems) {
+            if (scannedItem == null || scannedItem.barcode() == null || scannedItem.barcode().isBlank()) {
+                throw new WarehouseExportValidationException(
+                        "BARCODE_NOT_FOUND",
+                        "Barcode không hợp lệ hoặc thiếu thông tin.",
+                        java.util.List.of()
+                );
+            }
+            String barcode = scannedItem.barcode().trim();
+            int quantity = scannedItem.quantity() == null ? 0 : scannedItem.quantity();
+            if (quantity <= 0) {
+                throw new WarehouseExportValidationException(
+                        "BARCODE_NOT_FOUND",
+                        "Số lượng quét phải là số nguyên dương.",
+                        java.util.List.of()
+                );
+            }
+            scannedTotals.merge(barcode, quantity, (existing, next) -> (existing == null ? 0 : existing) + next);
+        }
+
+        Map<String, ProductMatch> approvedBarcodeMap = new java.util.HashMap<>();
+        for (Map<String, Object> item : approvedItems) {
+            UUID productId = UUID.fromString(String.valueOf(item.get("product_id")));
+            int approvedQuantity = ((Number) item.get("approved_quantity")).intValue();
+            String barcode = findProductBarcodeById(productId);
+            if (barcode != null && !barcode.isBlank()) {
+                approvedBarcodeMap.put(barcode.trim(), new ProductMatch(productId, approvedQuantity, findProductNameById(productId), findProductUnitById(productId)));
+            }
+        }
+
+        List<ScanErrorDetail> errors = new java.util.ArrayList<>();
+        for (Map.Entry<String, Integer> entry : scannedTotals.entrySet()) {
+            String barcode = entry.getKey();
+            Integer scannedQuantity = entry.getValue();
+            ProductMatch match = approvedBarcodeMap.get(barcode);
+            if (match == null) {
+                String productName = findProductNameByBarcode(barcode);
+                if (productName == null) {
+                    errors.add(new ScanErrorDetail(null, null, null, scannedQuantity, null, null));
+                    continue;
+                }
+                errors.add(new ScanErrorDetail(productName, findProductUnitByBarcode(barcode), null, scannedQuantity, null, null));
+                continue;
+            }
+
+            if (match.approvedQuantity() <= 0) {
+                errors.add(new ScanErrorDetail(match.productName(), match.unit(), 0, scannedQuantity, 0, null));
+                continue;
+            }
+
+            if (scannedQuantity < match.approvedQuantity()) {
+                errors.add(new ScanErrorDetail(match.productName(), match.unit(), match.approvedQuantity(), scannedQuantity, match.approvedQuantity() - scannedQuantity, null));
+            } else if (scannedQuantity > match.approvedQuantity()) {
+                errors.add(new ScanErrorDetail(match.productName(), match.unit(), match.approvedQuantity(), scannedQuantity, null, scannedQuantity - match.approvedQuantity()));
+            }
+        }
+
+        if (!errors.isEmpty()) {
+            throw new WarehouseExportValidationException(
+                    errors.stream().anyMatch(detail -> detail.missingQuantity() != null) ? "SCAN_INCOMPLETE" :
+                            (errors.stream().anyMatch(detail -> detail.excessQuantity() != null) ? "SCAN_EXCEEDED" : "BARCODE_NOT_FOUND"),
+                    errors.stream().anyMatch(detail -> detail.missingQuantity() != null)
+                            ? "Chưa kiểm tra đủ số lượng sản phẩm."
+                            : (errors.stream().anyMatch(detail -> detail.excessQuantity() != null) ? "Số lượng quét vượt quá số lượng duyệt." : "Dữ liệu barcode không hợp lệ."),
+                    errors
+            );
+        }
+
+        for (Map<String, Object> item : approvedItems) {
+            UUID productId = UUID.fromString(String.valueOf(item.get("product_id")));
+            int approvedQuantity = ((Number) item.get("approved_quantity")).intValue();
+            String barcode = findProductBarcodeById(productId);
+            if (barcode == null || barcode.isBlank()) {
+                throw new WarehouseExportValidationException(
+                        "BARCODE_NOT_CONFIGURED",
+                        "Sản phẩm chưa có barcode được cấu hình.",
+                        java.util.List.of(new ScanErrorDetail(findProductNameById(productId), findProductUnitById(productId), approvedQuantity, 0, approvedQuantity, null))
+                );
+            }
+            Integer scannedQuantity = scannedTotals.get(barcode.trim());
+            if (scannedQuantity == null || !scannedQuantity.equals(approvedQuantity)) {
+                throw new WarehouseExportValidationException(
+                        scannedQuantity == null ? "BARCODE_NOT_IN_REQUEST" : "SCAN_INCOMPLETE",
+                        scannedQuantity == null ? "Barcode không thuộc phiếu yêu cầu." : "Chưa kiểm tra đủ số lượng sản phẩm.",
+                        java.util.List.of(new ScanErrorDetail(findProductNameById(productId), findProductUnitById(productId), approvedQuantity, scannedQuantity == null ? 0 : scannedQuantity, scannedQuantity == null ? approvedQuantity : Math.max(approvedQuantity - scannedQuantity, 0), scannedQuantity != null && scannedQuantity > approvedQuantity ? scannedQuantity - approvedQuantity : null))
+                );
+            }
+        }
+    }
+
+    private String findProductBarcodeById(UUID productId) {
+        try {
+            return jdbcTemplate.queryForObject(
+                    "SELECT barcode FROM public.products WHERE id = ?",
+                    String.class,
+                    productId
+            );
+        } catch (EmptyResultDataAccessException ex) {
+            return null;
+        }
+    }
+
+    private String findProductNameById(UUID productId) {
+        try {
+            return jdbcTemplate.queryForObject(
+                    "SELECT name FROM public.products WHERE id = ?",
+                    String.class,
+                    productId
+            );
+        } catch (EmptyResultDataAccessException ex) {
+            return null;
+        }
+    }
+
+    private String findProductUnitById(UUID productId) {
+        try {
+            return jdbcTemplate.queryForObject(
+                    "SELECT package_size FROM public.products WHERE id = ?",
+                    String.class,
+                    productId
+            );
+        } catch (EmptyResultDataAccessException ex) {
+            return null;
+        }
+    }
+
+    private String findProductNameByBarcode(String barcode) {
+        try {
+            return jdbcTemplate.queryForObject(
+                    "SELECT name FROM public.products WHERE barcode = ?",
+                    String.class,
+                    barcode
+            );
+        } catch (EmptyResultDataAccessException ex) {
+            return null;
+        }
+    }
+
+    private String findProductUnitByBarcode(String barcode) {
+        try {
+            return jdbcTemplate.queryForObject(
+                    "SELECT package_size FROM public.products WHERE barcode = ?",
+                    String.class,
+                    barcode
+            );
+        } catch (EmptyResultDataAccessException ex) {
+            return null;
+        }
     }
 
     private InsufficientStockException insufficientStock(UUID productId, int requiredQuantity, int availableQuantity) {
@@ -456,9 +637,66 @@ public class WarehouseRestockService {
     }
 
     public static final class InsufficientStockException extends RuntimeException {
+        private final String productName;
+        private final int requiredQuantity;
+        private final int availableQuantity;
+
         public InsufficientStockException(String productName, int requiredQuantity, int availableQuantity) {
             super("Sản phẩm " + productName + " cần xuất " + requiredQuantity + " nhưng kho chỉ còn " + availableQuantity + ".");
+            this.productName = productName;
+            this.requiredQuantity = requiredQuantity;
+            this.availableQuantity = availableQuantity;
         }
+
+        public String getProductName() {
+            return productName;
+        }
+
+        public int getRequiredQuantity() {
+            return requiredQuantity;
+        }
+
+        public int getAvailableQuantity() {
+            return availableQuantity;
+        }
+    }
+
+    public static final class WarehouseExportValidationException extends RuntimeException {
+        private final String code;
+        private final List<ScanErrorDetail> details;
+
+        public WarehouseExportValidationException(String code, String message, List<ScanErrorDetail> details) {
+            super(message);
+            this.code = code;
+            this.details = details == null ? java.util.List.of() : details;
+        }
+
+        public String getCode() {
+            return code;
+        }
+
+        public List<ScanErrorDetail> getDetails() {
+            return details;
+        }
+    }
+
+    public record ExportRequest(List<ScanItem> scannedItems) {
+    }
+
+    public record ScanItem(String barcode, Integer quantity) {
+    }
+
+    public record ScanErrorDetail(
+            String productName,
+            String unit,
+            Integer approvedQuantity,
+            Integer scannedQuantity,
+            Integer missingQuantity,
+            Integer excessQuantity
+    ) {
+    }
+
+    public record ProductMatch(UUID productId, int approvedQuantity, String productName, String unit) {
     }
 
     public record ApproveRequest(List<ApproveItem> items) {
@@ -493,11 +731,24 @@ public class WarehouseRestockService {
             String productName,
             String barcode,
             String imageUrl,
+            String unit,
             int requestedQuantity,
             Integer approvedQuantity,
             int warehouseStockQuantity,
             boolean active
     ) {
+        public RestockRequestItemDetail(
+                UUID productId,
+                String productName,
+                String barcode,
+                String imageUrl,
+                int requestedQuantity,
+                Integer approvedQuantity,
+                int warehouseStockQuantity,
+                boolean active
+        ) {
+            this(productId, productName, barcode, imageUrl, null, requestedQuantity, approvedQuantity, warehouseStockQuantity, active);
+        }
     }
 
     public record RestockRequestDetailResponse(
@@ -512,12 +763,39 @@ public class WarehouseRestockService {
             UUID createdBy,
             String createdByName,
             UUID approvedBy,
+            String approvedByName,
+            String exportCreatedByName,
+            String receivedByName,
             OffsetDateTime createdAt,
             OffsetDateTime approvedAt,
             List<RestockRequestItemDetail> items,
             UUID exportId,
-            String exportStatus
+            String exportStatus,
+            OffsetDateTime exportCreatedAt,
+            OffsetDateTime receivedAt
     ) {
+        public RestockRequestDetailResponse(
+                UUID id,
+                UUID storeId,
+                String storeName,
+                UUID warehouseId,
+                String warehouseName,
+                String status,
+                String note,
+                String rejectReason,
+                UUID createdBy,
+                String createdByName,
+                UUID approvedBy,
+                OffsetDateTime createdAt,
+                OffsetDateTime approvedAt,
+                List<RestockRequestItemDetail> items,
+                UUID exportId,
+                String exportStatus
+        ) {
+            this(id, storeId, storeName, warehouseId, warehouseName, status, note, rejectReason,
+                    createdBy, createdByName, approvedBy, null, null, null,
+                    createdAt, approvedAt, items, exportId, exportStatus, null, null);
+        }
     }
 
     private OffsetDateTime toOffsetDateTime(Object value) {
@@ -528,13 +806,23 @@ public class WarehouseRestockService {
             return offsetDateTime;
         }
         if (value instanceof Timestamp timestamp) {
-            return timestamp.toInstant().atOffset(ZoneOffset.UTC);
+            return timestamp.toLocalDateTime().atOffset(ZoneOffset.UTC);
         }
         if (value instanceof Instant instant) {
             return instant.atOffset(ZoneOffset.UTC);
         }
         if (value instanceof java.time.LocalDateTime localDateTime) {
             return localDateTime.atOffset(ZoneOffset.UTC);
+        }
+        if (value instanceof java.sql.Date sqlDate) {
+            return sqlDate.toLocalDate().atStartOfDay().atOffset(ZoneOffset.UTC);
+        }
+        if (value instanceof String str) {
+            String trimmed = str.trim();
+            if (trimmed.isEmpty()) {
+                return null;
+            }
+            return OffsetDateTime.parse(trimmed);
         }
         return OffsetDateTime.parse(String.valueOf(value));
     }
@@ -545,6 +833,27 @@ public class WarehouseRestockService {
     public record RejectResult(UUID requestId, String status) {
     }
 
-    public record ExportResult(UUID exportId, String status) {
+    public record ExportResult(
+            UUID exportId,
+            UUID requestId,
+            String status,
+            String requestStatus,
+            int totalProducts,
+            int totalQuantity,
+            List<ExportItemSummary> items
+    ) {
+        public ExportResult(UUID exportId, String status) {
+            this(exportId, null, status, null, 0, 0, java.util.List.<ExportItemSummary>of());
+        }
+    }
+
+    public record ExportItemSummary(
+            String productName,
+            String barcode,
+            String unit,
+            int approvedQuantity,
+            int scannedQuantity,
+            int exportedQuantity
+    ) {
     }
 }

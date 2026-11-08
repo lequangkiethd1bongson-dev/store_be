@@ -87,8 +87,7 @@ public class SecurityConfig {
                         // Cho phép preflight request
                         .requestMatchers(HttpMethod.OPTIONS, "/**")
                         .permitAll()
-                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-.dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
+                        .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
                         /*
                          * API đọc công khai.
                          * Phải đặt trước các quy tắc yêu cầu vai trò Admin.
@@ -178,6 +177,21 @@ public class SecurityConfig {
 
                         .requestMatchers(HttpMethod.POST, "/api/warehouse/restock-requests/{requestId}/export")
                         .hasRole("KHO_MANAGER")
+
+                        .requestMatchers(HttpMethod.GET, "/api/warehouse/goods-receipts/**")
+                        .hasAnyRole("KHO_MANAGER", "KHO")
+
+                        .requestMatchers(HttpMethod.POST, "/api/warehouse/goods-receipts")
+                        .hasAnyRole("KHO_MANAGER", "KHO")
+
+                        .requestMatchers(HttpMethod.PUT, "/api/warehouse/goods-receipts/{receiptId}")
+                        .hasAnyRole("KHO_MANAGER", "KHO")
+
+                        .requestMatchers(HttpMethod.POST, "/api/warehouse/goods-receipts/{receiptId}/complete")
+                        .hasAnyRole("KHO_MANAGER", "KHO")
+
+                        .requestMatchers(HttpMethod.POST, "/api/warehouse/goods-receipts/{receiptId}/cancel")
+                        .hasAnyRole("KHO_MANAGER", "KHO")
 
                         // Tạo sản phẩm
                         .requestMatchers(HttpMethod.POST, "/api/products")

@@ -59,8 +59,9 @@ public class WarehouseRestockController {
     @PostMapping("/restock-requests/{requestId}/export")
     public ResponseEntity<WarehouseRestockService.ExportResult> exportRequest(
             Authentication authentication,
-            @PathVariable UUID requestId
+            @PathVariable UUID requestId,
+            @RequestBody(required = false) WarehouseRestockService.ExportRequest request
     ) {
-        return ResponseEntity.ok(warehouseRestockService.exportRequest(authentication, requestId));
+        return ResponseEntity.ok(warehouseRestockService.exportRequest(authentication, requestId, request));
     }
 }

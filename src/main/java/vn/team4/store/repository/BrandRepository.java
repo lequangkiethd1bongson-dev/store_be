@@ -9,7 +9,5 @@ import java.util.UUID;
 
 public interface BrandRepository extends JpaRepository<BrandEntity, UUID> {
     Optional<BrandEntity> findByNameIgnoreCase(String name);
-    Optional<BrandEntity> findByNameIgnoreCaseAndActiveTrue(String name);
-    List<BrandEntity> findAllByActiveTrueOrderByNameAsc();
     List<BrandEntity> findAllByOrderByNameAsc();
 }

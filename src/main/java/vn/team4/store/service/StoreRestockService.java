@@ -319,13 +319,23 @@ public class StoreRestockService {
             return offsetDateTime;
         }
         if (value instanceof Timestamp timestamp) {
-            return timestamp.toInstant().atOffset(ZoneOffset.UTC);
+            return timestamp.toLocalDateTime().atOffset(ZoneOffset.UTC);
         }
         if (value instanceof Instant instant) {
             return instant.atOffset(ZoneOffset.UTC);
         }
         if (value instanceof java.time.LocalDateTime localDateTime) {
             return localDateTime.atOffset(ZoneOffset.UTC);
+        }
+        if (value instanceof java.sql.Date sqlDate) {
+            return sqlDate.toLocalDate().atStartOfDay().atOffset(ZoneOffset.UTC);
+        }
+        if (value instanceof String str) {
+            String trimmed = str.trim();
+            if (trimmed.isEmpty()) {
+                return null;
+            }
+            return OffsetDateTime.parse(trimmed);
         }
         return OffsetDateTime.parse(String.valueOf(value));
     }

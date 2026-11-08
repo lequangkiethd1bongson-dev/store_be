@@ -9,7 +9,9 @@ import vn.team4.store.dto.StockReceiptResponse;
 import vn.team4.store.model.Product;
 
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 
 @Service
 public class StockReceiptService {
@@ -37,7 +39,7 @@ public class StockReceiptService {
         final String productId = originalProductId.trim();
         final int quantity = originalQuantity;
         final DocumentReference productRef = firestore.collection("products")
-                .document(productId);
+                .document(Objects.requireNonNull(productId, "Product ID must not be null"));
         final DocumentReference receiptRef = firestore.collection("stockReceipts")
                 .document();
         final String createdAt = Instant.now().toString();
@@ -93,13 +95,13 @@ public class StockReceiptService {
                     stockAfter,
                     createdAt
             );
-            transaction.set(receiptRef, Map.of(
-                    "id", receipt.id(),
-                    "productId", receipt.productId(),
-                    "quantity", receipt.quantity(),
-                    "stockAfter", receipt.stockAfter(),
-                    "createdAt", receipt.createdAt()
-            ));
+            Map<String, Object> receiptData = new HashMap<>();
+            receiptData.put("id", receipt.id());
+            receiptData.put("productId", receipt.productId());
+            receiptData.put("quantity", receipt.quantity());
+            receiptData.put("stockAfter", receipt.stockAfter());
+            receiptData.put("createdAt", receipt.createdAt());
+            transaction.set(receiptRef, receiptData);
             return receipt;
         }).get();
     }

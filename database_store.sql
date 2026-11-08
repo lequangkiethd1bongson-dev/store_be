@@ -18,6 +18,7 @@ create type public.request_status  as enum ('pending', 'approved', 'rejected', '
 create type public.export_status   as enum ('shipping', 'delivered');
 create type public.alert_status    as enum ('open', 'resolved');
 create type public.payment_method  as enum ('cash', 'card', 'transfer', 'e_wallet');
+create type public.goods_receipt_status as enum ('draft', 'completed', 'cancelled');
 
 -- ---------------------------------------------------------------------
 -- 1. TỔ CHỨC: CỬA HÀNG, KHO, NHÂN VIÊN
@@ -157,10 +158,22 @@ create table public.goods_receipts (
   warehouse_id  uuid not null references public.warehouses(id),
   supplier_id   uuid references public.suppliers(id),
   created_by    uuid not null default auth.uid() references public.employees(id),
+  status        public.goods_receipt_status not null default 'draft',
   total_amount  numeric(14,0) not null default 0,
   note          text,
-  created_at    timestamptz not null default now()
+  created_at    timestamptz not null default now(),
+  completed_at  timestamptz,
+  cancelled_at  timestamptz
 );
+
+alter table public.goods_receipts
+  add column if not exists status public.goods_receipt_status not null default 'draft';
+
+alter table public.goods_receipts
+  add column if not exists completed_at timestamptz;
+
+alter table public.goods_receipts
+  add column if not exists cancelled_at timestamptz;
 
 create table public.goods_receipt_items (
   receipt_id   uuid not null references public.goods_receipts(id) on delete cascade,
@@ -319,31 +332,51 @@ create trigger on_auth_user_created
 -- ---------------------------------------------------------------------
 -- 10. TRIGGER: NHẬP KHO TỪ NHÀ CUNG CẤP
 -- ---------------------------------------------------------------------
-create or replace function public.trg_goods_receipt_item_after_insert()
+drop trigger if exists goods_receipt_item_after_insert on public.goods_receipt_items;
+
+drop function if exists public.trg_goods_receipt_item_after_insert();
+
+create or replace function public.trg_goods_receipt_after_status_complete()
 returns trigger
 language plpgsql security definer set search_path = public as $$
 declare v_wh uuid;
+        v_total numeric(14,0) := 0;
+        rec record;
 begin
-  select warehouse_id into v_wh from public.goods_receipts where id = new.receipt_id;
+  if new.status = 'completed' and (old is null or old.status is distinct from new.status) then
+    -- Dùng một luồng duy nhất để cộng tồn kho khi phiếu được hoàn tất.
+    for rec in
+      select i.product_id, i.quantity, i.import_price
+      from public.goods_receipt_items i
+      where i.receipt_id = new.id
+    loop
+      select warehouse_id into v_wh from public.goods_receipts where id = new.id;
 
-  insert into public.warehouse_stock (warehouse_id, product_id, quantity)
-  values (v_wh, new.product_id, new.quantity)
-  on conflict (warehouse_id, product_id)
-  do update set quantity = public.warehouse_stock.quantity + excluded.quantity,
-                updated_at = now();
+      insert into public.warehouse_stock (warehouse_id, product_id, quantity)
+      values (v_wh, rec.product_id, rec.quantity)
+      on conflict (warehouse_id, product_id)
+      do update set quantity = public.warehouse_stock.quantity + excluded.quantity,
+                    updated_at = now();
 
-  update public.products set import_price = new.import_price where id = new.product_id;
+      update public.products
+         set import_price = rec.import_price
+       where id = rec.product_id;
 
-  update public.goods_receipts
-     set total_amount = total_amount + new.quantity * new.import_price
-   where id = new.receipt_id;
+      v_total := v_total + rec.quantity * rec.import_price;
+    end loop;
+
+    update public.goods_receipts
+       set total_amount = coalesce(v_total, 0),
+           completed_at = coalesce(completed_at, now())
+     where id = new.id;
+  end if;
 
   return new;
 end $$;
 
-create trigger goods_receipt_item_after_insert
-  after insert on public.goods_receipt_items
-  for each row execute function public.trg_goods_receipt_item_after_insert();
+create trigger goods_receipt_after_status_complete
+  after update of status on public.goods_receipts
+  for each row execute function public.trg_goods_receipt_after_status_complete();
 
 -- ---------------------------------------------------------------------
 -- 11. TRIGGER: BÁN HÀNG (trừ tồn cửa hàng, tính tổng tiền)

@@ -24,9 +24,11 @@ public class BrandService {
 
     @Transactional(readOnly = true)
     public List<BrandEntity> findAll(boolean includeHidden) {
-        return includeHidden
-                ? brandRepository.findAllByOrderByNameAsc()
-                : brandRepository.findAllByActiveTrueOrderByNameAsc();
+        List<BrandEntity> brands = brandRepository.findAllByOrderByNameAsc();
+        if (includeHidden) {
+            return brands;
+        }
+        return brands.stream().filter(brand -> brand != null && brand.isActive()).toList();
     }
 
     @Transactional(readOnly = true)
