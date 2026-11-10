@@ -1,6 +1,6 @@
-package vn.team4.store.dto;
+package vn.team4.store.supplier.dto;
 
-import vn.team4.store.model.SupplierEntity;
+import vn.team4.store.supplier.entity.SupplierEntity;
 
 import java.util.UUID;
 

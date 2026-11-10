@@ -17,11 +17,11 @@ import vn.team4.store.model.GoodsReceiptEntity;
 import vn.team4.store.model.GoodsReceiptItemEntity;
 import vn.team4.store.model.GoodsReceiptStatus;
 import vn.team4.store.model.ProductEntity;
-import vn.team4.store.model.SupplierEntity;
+import vn.team4.store.supplier.entity.SupplierEntity;
 import vn.team4.store.repository.GoodsReceiptItemRepository;
 import vn.team4.store.repository.GoodsReceiptRepository;
 import vn.team4.store.repository.ProductRepository;
-import vn.team4.store.repository.SupplierRepository;
+import vn.team4.store.supplier.repository.SupplierRepository;
 
 import java.lang.reflect.Field;
 import java.math.BigDecimal;
@@ -205,6 +205,32 @@ class GoodsReceiptServiceTest {
             assertEquals(HttpStatus.CONFLICT, exception.getStatusCode());
         }
         verify(itemRepository, never()).saveAllAndFlush(anyList());
+    }
+
+    @Test
+    void rejectsInactiveSupplierForNewReceipt() {
+        supplier.setActive(false);
+
+        ResponseStatusException exception = assertThrows(
+                ResponseStatusException.class,
+                () -> service.createDraft(authentication, request(BigDecimal.TEN)));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+        verify(receiptRepository, never()).saveAndFlush(any(GoodsReceiptEntity.class));
+    }
+
+    @Test
+    void historicalReceiptStillResolvesInactiveSupplierName() {
+        supplier.setActive(false);
+        UUID receiptId = receiptId();
+        GoodsReceiptEntity receipt = receipt(receiptId, GoodsReceiptStatus.completed);
+        when(receiptRepository.findByIdAndWarehouseId(receiptId, warehouseId))
+                .thenReturn(Optional.of(receipt));
+        when(itemRepository.findByReceiptIdOrderByProductId(receiptId)).thenReturn(List.of());
+
+        var response = service.getById(authentication, receiptId);
+
+        assertEquals("Supplier", response.supplierName());
     }
 
     private GoodsReceiptRequest request(BigDecimal price) {

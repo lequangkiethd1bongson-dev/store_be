@@ -1,4 +1,4 @@
-package vn.team4.store.model;
+package vn.team4.store.supplier.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;

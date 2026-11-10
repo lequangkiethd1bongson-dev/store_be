@@ -16,11 +16,11 @@ import vn.team4.store.model.GoodsReceiptEntity;
 import vn.team4.store.model.GoodsReceiptItemEntity;
 import vn.team4.store.model.GoodsReceiptStatus;
 import vn.team4.store.model.ProductEntity;
-import vn.team4.store.model.SupplierEntity;
+import vn.team4.store.supplier.entity.SupplierEntity;
 import vn.team4.store.repository.GoodsReceiptItemRepository;
 import vn.team4.store.repository.GoodsReceiptRepository;
 import vn.team4.store.repository.ProductRepository;
-import vn.team4.store.repository.SupplierRepository;
+import vn.team4.store.supplier.repository.SupplierRepository;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;

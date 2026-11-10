@@ -105,6 +105,10 @@ public class SecurityConfig {
                         )
                         .permitAll()
 
+                        // Admin và nhân viên kho được đọc nhà cung cấp.
+                        .requestMatchers(HttpMethod.GET, "/api/suppliers", "/api/suppliers/**")
+                        .hasAnyRole("ADMIN", "KHO_MANAGER", "KHO")
+
                         // Chỉ Admin được tạo nhà cung cấp
                         .requestMatchers(
                                 HttpMethod.POST,
