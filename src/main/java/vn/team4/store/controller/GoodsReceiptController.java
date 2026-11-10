@@ -1,81 +1,68 @@
 package vn.team4.store.controller;
 
-import jakarta.validation.Valid;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.Authentication;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
-import vn.team4.store.dto.GoodsReceiptRequest;
-import vn.team4.store.dto.GoodsReceiptResponse;
-import vn.team4.store.service.GoodsReceiptService;
+import org.springframework.web.bind.annotation.*;
+import vn.team4.store.model.GoodsReceiptEntity;
+import vn.team4.store.repository.GoodsReceiptRepository;
 
-import java.net.URI;
 import java.util.List;
-import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/warehouse")
+@RequestMapping("/warehouse/goods-receipts")
+@CrossOrigin(origins = "*")
 public class GoodsReceiptController {
 
-    private final GoodsReceiptService goodsReceiptService;
+    @Autowired
+    private GoodsReceiptRepository goodsReceiptRepository;
 
-    public GoodsReceiptController(GoodsReceiptService goodsReceiptService) {
-        this.goodsReceiptService = goodsReceiptService;
+    @GetMapping
+    public List<GoodsReceiptEntity> getAllGoodsReceipts() {
+        return goodsReceiptRepository.findAll();
     }
 
-    @GetMapping("/goods-receipts")
-    public List<GoodsReceiptResponse> list(
-            Authentication authentication,
-            @RequestParam(required = false) String status,
-            @RequestParam(required = false) UUID warehouseId) {
-        return goodsReceiptService.list(authentication, status, warehouseId);
+    @PostMapping
+    public GoodsReceiptEntity createGoodsReceipt(@RequestBody GoodsReceiptEntity receipt) {
+        return goodsReceiptRepository.save(receipt);
     }
 
-    @GetMapping("/goods-receipts/{receiptId}")
-    public GoodsReceiptResponse getById(
-            Authentication authentication,
-            @PathVariable UUID receiptId) {
-        return goodsReceiptService.getById(authentication, receiptId);
+    @GetMapping("/{id}")
+    public ResponseEntity<GoodsReceiptEntity> getGoodsReceiptById(@PathVariable Long id) {
+        return goodsReceiptRepository.findById(id)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
     }
 
-    @PostMapping("/goods-receipts")
-    public ResponseEntity<GoodsReceiptResponse> createDraft(
-            Authentication authentication,
-            @Valid @RequestBody GoodsReceiptRequest request) {
-        GoodsReceiptResponse response = goodsReceiptService.createDraft(authentication, request);
-        URI location = ServletUriComponentsBuilder.fromCurrentRequest()
-                .path("/{receiptId}")
-                .buildAndExpand(response.id())
-                .toUri();
-        return ResponseEntity.created(location).body(response);
+    @PutMapping("/{id}")
+    public ResponseEntity<GoodsReceiptEntity> updateGoodsReceipt(@PathVariable Long id, @RequestBody GoodsReceiptEntity details) {
+        return goodsReceiptRepository.findById(id)
+                .map(gr -> {
+                    gr.setSupplierId(details.getSupplierId());
+                    gr.setSupplierName(details.getSupplierName());
+                    gr.setTotalAmount(details.getTotalAmount());
+                    gr.setStatus(details.getStatus());
+                    return ResponseEntity.ok(goodsReceiptRepository.save(gr));
+                })
+                .orElse(ResponseEntity.notFound().build());
     }
 
-    @PutMapping("/goods-receipts/{receiptId}")
-    public GoodsReceiptResponse updateDraft(
-            Authentication authentication,
-            @PathVariable UUID receiptId,
-            @Valid @RequestBody GoodsReceiptRequest request) {
-        return goodsReceiptService.updateDraft(authentication, receiptId, request);
+    @PostMapping("/{id}/complete")
+    public ResponseEntity<GoodsReceiptEntity> completeGoodsReceipt(@PathVariable Long id) {
+        return goodsReceiptRepository.findById(id)
+                .map(gr -> {
+                    gr.setStatus("COMPLETED");
+                    return ResponseEntity.ok(goodsReceiptRepository.save(gr));
+                })
+                .orElse(ResponseEntity.notFound().build());
     }
 
-    @PostMapping("/goods-receipts/{receiptId}/complete")
-    public GoodsReceiptResponse complete(
-            Authentication authentication,
-            @PathVariable UUID receiptId) {
-        return goodsReceiptService.complete(authentication, receiptId);
-    }
-
-    @PostMapping("/goods-receipts/{receiptId}/cancel")
-    public GoodsReceiptResponse cancel(
-            Authentication authentication,
-            @PathVariable UUID receiptId) {
-        return goodsReceiptService.cancel(authentication, receiptId);
+    @PostMapping("/{id}/cancel")
+    public ResponseEntity<GoodsReceiptEntity> cancelGoodsReceipt(@PathVariable Long id) {
+        return goodsReceiptRepository.findById(id)
+                .map(gr -> {
+                    gr.setStatus("CANCELLED");
+                    return ResponseEntity.ok(goodsReceiptRepository.save(gr));
+                })
+                .orElse(ResponseEntity.notFound().build());
     }
 }
