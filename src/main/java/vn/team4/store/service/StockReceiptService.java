@@ -9,7 +9,9 @@ import vn.team4.store.dto.StockReceiptResponse;
 import vn.team4.store.model.Product;
 
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 
 @Service
 public class StockReceiptService {
@@ -20,16 +22,31 @@ public class StockReceiptService {
     }
 
     public StockReceiptResponse receive(StockReceiptRequest request) throws Exception {
-        String productId = request.getProductId().trim();
-        DocumentReference productRef = firestore.collection("products")
-                .document(productId);
-        DocumentReference receiptRef = firestore.collection("stockReceipts")
+        if (request == null) {
+            throw new IllegalArgumentException("Request must not be null");
+        }
+
+        String originalProductId = request.getProductId();
+        if (originalProductId == null || originalProductId.trim().isEmpty()) {
+            throw new IllegalArgumentException("Product ID must not be blank");
+        }
+
+        int originalQuantity = request.getQuantity();
+        if (originalQuantity <= 0) {
+            throw new IllegalArgumentException("Quantity must be greater than 0");
+        }
+
+        final String productId = originalProductId.trim();
+        final int quantity = originalQuantity;
+        final DocumentReference productRef = firestore.collection("products")
+                .document(Objects.requireNonNull(productId, "Product ID must not be null"));
+        final DocumentReference receiptRef = firestore.collection("stockReceipts")
                 .document();
-        String createdAt = Instant.now().toString();
+        final String createdAt = Instant.now().toString();
 
         return firestore.runTransaction(transaction -> {
             DocumentSnapshot productSnapshot = transaction.get(productRef).get();
-            int currentStock = 0;
+            long currentStock = 0L;
 
             if (productSnapshot.exists()) {
                 Object stockValue = productSnapshot.get("stock");
@@ -48,11 +65,18 @@ public class StockReceiptService {
                                         + productId
                         );
                     }
-                    currentStock = (int) stockLong;
+                    currentStock = stockLong;
                 }
             }
 
-            int stockAfter = Math.addExact(currentStock, request.getQuantity());
+            long stockAfterLong = Math.addExact(currentStock, quantity);
+            if (stockAfterLong < Integer.MIN_VALUE || stockAfterLong > Integer.MAX_VALUE) {
+                throw new IllegalStateException(
+                        "Stock after receiving for product " + productId + " exceeds the supported range"
+                );
+            }
+            int stockAfter = Math.toIntExact(stockAfterLong);
+
             if (productSnapshot.exists()) {
                 transaction.update(productRef, "stock", stockAfter);
             } else {
@@ -67,17 +91,17 @@ public class StockReceiptService {
             StockReceiptResponse receipt = new StockReceiptResponse(
                     receiptRef.getId(),
                     productId,
-                    request.getQuantity(),
+                    quantity,
                     stockAfter,
                     createdAt
             );
-            transaction.set(receiptRef, Map.of(
-                    "id", receipt.id(),
-                    "productId", receipt.productId(),
-                    "quantity", receipt.quantity(),
-                    "stockAfter", receipt.stockAfter(),
-                    "createdAt", receipt.createdAt()
-            ));
+            Map<String, Object> receiptData = new HashMap<>();
+            receiptData.put("id", receipt.id());
+            receiptData.put("productId", receipt.productId());
+            receiptData.put("quantity", receipt.quantity());
+            receiptData.put("stockAfter", receipt.stockAfter());
+            receiptData.put("createdAt", receipt.createdAt());
+            transaction.set(receiptRef, receiptData);
             return receipt;
         }).get();
     }
