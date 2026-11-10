@@ -33,8 +33,9 @@ public class GoodsReceiptController {
     @GetMapping("/goods-receipts")
     public List<GoodsReceiptResponse> list(
             Authentication authentication,
-            @RequestParam(required = false) String status) {
-        return goodsReceiptService.list(authentication, status);
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) UUID warehouseId) {
+        return goodsReceiptService.list(authentication, status, warehouseId);
     }
 
     @GetMapping("/goods-receipts/{receiptId}")

@@ -39,6 +39,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -78,6 +79,9 @@ class GoodsReceiptServiceTest {
         productId = UUID.randomUUID();
         when(employeeContextService.requireWarehouseManagerOrStaff(authentication))
                 .thenReturn(new EmployeeContext(employeeId, "kho", null, warehouseId, true));
+        when(employeeContextService.resolveWarehouseScope(any(EmployeeContext.class), isNull()))
+                .thenReturn(warehouseId);
+        when(employeeContextService.isAdmin(any(EmployeeContext.class))).thenReturn(false);
 
         supplier = new SupplierEntity();
         supplier.setId(supplierId);
@@ -119,6 +123,61 @@ class GoodsReceiptServiceTest {
         assertEquals(1, persistedItems.size());
         verify(receiptRepository, times(2)).saveAndFlush(org.mockito.ArgumentMatchers.argThat(
                 receipt -> receipt.getStatus() == GoodsReceiptStatus.draft));
+    }
+
+    @Test
+    void administratorWithoutWarehouseAssignmentCanChooseAnExistingWarehouse() {
+        UUID adminId = UUID.randomUUID();
+        UUID targetWarehouseId = UUID.randomUUID();
+        EmployeeContext admin = new EmployeeContext(adminId, "admin", null, null, true);
+        when(employeeContextService.requireWarehouseManagerOrStaff(authentication)).thenReturn(admin);
+        when(employeeContextService.isAdmin(admin)).thenReturn(true);
+        when(employeeContextService.resolveWarehouseScope(admin, targetWarehouseId))
+                .thenReturn(targetWarehouseId);
+        when(jdbcTemplate.queryForObject(anyString(), eq(Integer.class), eq(targetWarehouseId)))
+                .thenReturn(1);
+        when(jdbcTemplate.queryForObject(anyString(), eq(String.class), eq(adminId)))
+                .thenReturn("Administrator");
+
+        List<GoodsReceiptItemEntity> persistedItems = new ArrayList<>();
+        when(receiptRepository.saveAndFlush(any(GoodsReceiptEntity.class)))
+                .thenAnswer(invocation -> {
+                    GoodsReceiptEntity receipt = invocation.getArgument(0);
+                    if (receipt.getId() == null) {
+                        receipt.setId(UUID.randomUUID());
+                    }
+                    return receipt;
+                });
+        when(itemRepository.saveAllAndFlush(anyList())).thenAnswer(invocation -> {
+            persistedItems.addAll(invocation.getArgument(0));
+            return invocation.getArgument(0);
+        });
+        when(itemRepository.findByReceiptIdOrderByProductId(any(UUID.class)))
+                .thenAnswer(invocation -> persistedItems);
+
+        GoodsReceiptRequest request = new GoodsReceiptRequest(
+                supplierId,
+                "admin receipt",
+                List.of(new GoodsReceiptItemRequest(productId, 5, BigDecimal.TEN, null, null)),
+                targetWarehouseId);
+
+        var response = service.createDraft(authentication, request);
+
+        assertEquals(targetWarehouseId, response.warehouseId());
+        verify(receiptRepository).saveAndFlush(org.mockito.ArgumentMatchers.argThat(
+                receipt -> targetWarehouseId.equals(receipt.getWarehouseId())));
+    }
+
+    @Test
+    void administratorWithoutWarehouseAssignmentCanListReceiptsAcrossWarehouses() {
+        EmployeeContext admin = new EmployeeContext(UUID.randomUUID(), "admin", null, null, true);
+        when(employeeContextService.requireWarehouseManagerOrStaff(authentication)).thenReturn(admin);
+        when(employeeContextService.isAdmin(admin)).thenReturn(true);
+        when(receiptRepository.findAllByOrderByCreatedAtDesc()).thenReturn(List.of());
+
+        assertEquals(List.of(), service.list(authentication, null, null));
+
+        verify(receiptRepository).findAllByOrderByCreatedAtDesc();
     }
 
     @Test

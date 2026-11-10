@@ -1,5 +1,6 @@
 package vn.team4.store.service;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -39,6 +40,20 @@ public class StoreRestockService {
         }
         if (request.warehouseId() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "warehouseId là bắt buộc");
+        }
+        UUID storeId = employeeContextService.resolveStoreScope(employee, request.storeId());
+        if (storeId == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Admin phải chọn storeId để tạo yêu cầu");
+        }
+        if (employeeContextService.isAdmin(employee)) {
+            Integer storeCount = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM public.stores WHERE id = ? AND COALESCE(is_active, true) = true",
+                    Integer.class,
+                    storeId
+            );
+            if (storeCount == null || storeCount == 0) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy cửa hàng hợp lệ");
+            }
         }
         if (request.items() == null || request.items().isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Danh sách sản phẩm yêu cầu không được rỗng");
@@ -81,7 +96,7 @@ public class StoreRestockService {
         jdbcTemplate.update(
                 "INSERT INTO public.restock_requests (id, store_id, warehouse_id, status, created_by, note, created_at) VALUES (?, ?, ?, 'pending', ?, ?, now())",
                 requestId,
-                employee.storeId(),
+                storeId,
                 request.warehouseId(),
                 employee.id(),
                 note
@@ -96,14 +111,33 @@ public class StoreRestockService {
             );
         }
 
-        return new RestockRequestCreateResponse(requestId, "pending", employee.storeId(), request.warehouseId(), note);
+        return new RestockRequestCreateResponse(requestId, "pending", storeId, request.warehouseId(), note);
     }
 
     public List<RestockRequestSummaryResponse> listRequests(
             Authentication authentication,
             String status
     ) {
+        return listRequests(authentication, status, null);
+    }
+
+    public List<RestockRequestSummaryResponse> listRequests(
+            Authentication authentication,
+            String status,
+            UUID requestedStoreId
+    ) {
         EmployeeContext employee = employeeContextService.requireStoreManager(authentication);
+        UUID storeScope = employeeContextService.resolveStoreScope(employee, requestedStoreId);
+        if (employeeContextService.isAdmin(employee) && storeScope != null) {
+            Integer storeCount = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM public.stores WHERE id = ?",
+                    Integer.class,
+                    storeScope
+            );
+            if (storeCount == null || storeCount == 0) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy cửa hàng");
+            }
+        }
 
         StringBuilder sql = new StringBuilder("""
                 SELECT r.id,
@@ -119,10 +153,13 @@ public class StoreRestockService {
                 JOIN public.warehouses w ON w.id = r.warehouse_id
                 LEFT JOIN public.restock_request_items i ON i.request_id = r.id
                 LEFT JOIN public.stock_exports e ON e.request_id = r.id
-                WHERE r.store_id = ?
+                WHERE 1 = 1
                 """);
         List<Object> params = new java.util.ArrayList<>();
-        params.add(employee.storeId());
+        if (storeScope != null) {
+            sql.append(" AND r.store_id = ? ");
+            params.add(storeScope);
+        }
 
         if (status != null && !status.isBlank()) {
             String normalizedStatus = status.trim().toLowerCase(java.util.Locale.ROOT);
@@ -155,7 +192,7 @@ public class StoreRestockService {
     public RestockRequestDetailResponse getRequestDetail(Authentication authentication, UUID requestId) {
         EmployeeContext employee = employeeContextService.requireStoreManager(authentication);
 
-        String sql = """
+        StringBuilder sql = new StringBuilder("""
                 SELECT r.id,
                        r.store_id,
                        r.warehouse_id,
@@ -169,12 +206,18 @@ public class StoreRestockService {
                        r.approved_at
                 FROM public.restock_requests r
                 JOIN public.warehouses w ON w.id = r.warehouse_id
-                WHERE r.id = ? AND r.store_id = ?
-                """;
+                WHERE r.id = ?
+                """);
+        List<Object> params = new java.util.ArrayList<>();
+        params.add(requestId);
+        if (!employeeContextService.isAdmin(employee)) {
+            sql.append(" AND r.store_id = ?");
+            params.add(employee.storeId());
+        }
 
         Map<String, Object> row;
         try {
-            row = jdbcTemplate.queryForMap(sql, requestId, employee.storeId());
+            row = jdbcTemplate.queryForMap(sql.toString(), params.toArray());
         } catch (EmptyResultDataAccessException ex) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy phiếu yêu cầu");
         }
@@ -241,9 +284,7 @@ public class StoreRestockService {
         }
 
         UUID exportStoreId = UUID.fromString(String.valueOf(exportRow.get("store_id")));
-        if (!exportStoreId.equals(employee.storeId())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Bạn không có quyền xác nhận phiếu xuất của cửa hàng khác");
-        }
+        employeeContextService.requireStoreAccess(employee, exportStoreId);
         if (!"shipping".equals(String.valueOf(exportRow.get("status")))) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Phiếu xuất đã được xác nhận hoặc không ở trạng thái shipping");
         }
@@ -267,7 +308,7 @@ public class StoreRestockService {
                     DO UPDATE SET quantity = public.store_stock.quantity + EXCLUDED.quantity,
                                   updated_at = now()
                     """,
-                    employee.storeId(),
+                    exportStoreId,
                     productId,
                     quantity
             );
@@ -286,7 +327,7 @@ public class StoreRestockService {
                              AND s.quantity > s.min_quantity
                        )
                     """,
-                    employee.storeId(),
+                    exportStoreId,
                     productId
             );
         }
@@ -340,7 +381,17 @@ public class StoreRestockService {
         return OffsetDateTime.parse(String.valueOf(value));
     }
 
-    public record RestockRequestCreateRequest(UUID warehouseId, String note, List<RestockRequestLineRequest> items) {
+    public record RestockRequestCreateRequest(
+            @JsonAlias({"warehouse_id"}) UUID warehouseId,
+            String note,
+            List<RestockRequestLineRequest> items,
+            @JsonAlias({"store_id"}) UUID storeId) {
+        public RestockRequestCreateRequest(
+                UUID warehouseId,
+                String note,
+                List<RestockRequestLineRequest> items) {
+            this(warehouseId, note, items, null);
+        }
     }
 
     public record RestockRequestLineRequest(UUID productId, Integer requestedQuantity) {

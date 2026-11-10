@@ -56,20 +56,39 @@ public class GoodsReceiptService {
 
     @Transactional(readOnly = true)
     public List<GoodsReceiptResponse> list(Authentication authentication, String status) {
+        return list(authentication, status, null);
+    }
+
+    @Transactional(readOnly = true)
+    public List<GoodsReceiptResponse> list(
+            Authentication authentication,
+            String status,
+            UUID requestedWarehouseId) {
         EmployeeContext employee = employeeContextService.requireWarehouseManagerOrStaff(authentication);
-        List<GoodsReceiptEntity> receipts = status == null || status.isBlank()
-                ? goodsReceiptRepository.findByWarehouseIdOrderByCreatedAtDesc(employee.warehouseId())
-                : goodsReceiptRepository.findByWarehouseIdAndStatusOrderByCreatedAtDesc(
-                        employee.warehouseId(),
-                        parseStatus(status));
+        UUID warehouseScope = employeeContextService.resolveWarehouseScope(employee, requestedWarehouseId);
+        if (employeeContextService.isAdmin(employee) && requestedWarehouseId != null) {
+            validateWarehouse(requestedWarehouseId);
+        }
+        GoodsReceiptStatus parsedStatus = status == null || status.isBlank() ? null : parseStatus(status);
+        List<GoodsReceiptEntity> receipts;
+        if (warehouseScope == null) {
+            receipts = parsedStatus == null
+                    ? goodsReceiptRepository.findAllByOrderByCreatedAtDesc()
+                    : goodsReceiptRepository.findByStatusOrderByCreatedAtDesc(parsedStatus);
+        } else {
+            receipts = parsedStatus == null
+                    ? goodsReceiptRepository.findByWarehouseIdOrderByCreatedAtDesc(warehouseScope)
+                    : goodsReceiptRepository.findByWarehouseIdAndStatusOrderByCreatedAtDesc(
+                            warehouseScope,
+                            parsedStatus);
+        }
         return receipts.stream().map(this::toResponse).toList();
     }
 
     @Transactional(readOnly = true)
     public GoodsReceiptResponse getById(Authentication authentication, UUID receiptId) {
         EmployeeContext employee = employeeContextService.requireWarehouseManagerOrStaff(authentication);
-        GoodsReceiptEntity receipt = goodsReceiptRepository.findByIdAndWarehouseId(receiptId, employee.warehouseId())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy phiếu nhập kho"));
+        GoodsReceiptEntity receipt = findReceipt(employee, receiptId);
         return toResponse(receipt);
     }
 
@@ -79,11 +98,18 @@ public class GoodsReceiptService {
         if (request == null || request.items() == null || request.items().isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Phiếu nhập phải có ít nhất một sản phẩm");
         }
+        UUID warehouseId = employeeContextService.resolveWarehouseScope(employee, request.warehouseId());
+        if (warehouseId == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Admin phải chọn warehouseId để tạo phiếu nhập");
+        }
+        if (employeeContextService.isAdmin(employee)) {
+            validateWarehouse(warehouseId);
+        }
         validateItemRequests(request.items());
 
         SupplierEntity supplier = validateSupplier(request.supplierId());
         GoodsReceiptEntity receipt = new GoodsReceiptEntity();
-        receipt.setWarehouseId(employee.warehouseId());
+        receipt.setWarehouseId(warehouseId);
         receipt.setSupplierId(supplier == null ? null : supplier.getId());
         receipt.setCreatedBy(employee.id());
         receipt.setStatus(GoodsReceiptStatus.draft);
@@ -124,8 +150,7 @@ public class GoodsReceiptService {
     @Transactional
     public GoodsReceiptResponse updateDraft(Authentication authentication, UUID receiptId, GoodsReceiptRequest request) {
         EmployeeContext employee = employeeContextService.requireWarehouseManagerOrStaff(authentication);
-        GoodsReceiptEntity receipt = goodsReceiptRepository.findByIdAndWarehouseId(receiptId, employee.warehouseId())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy phiếu nhập kho"));
+        GoodsReceiptEntity receipt = findReceipt(employee, receiptId);
         if (receipt.getStatus() != GoodsReceiptStatus.draft) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Chỉ cập nhật được phiếu ở trạng thái nháp");
         }
@@ -172,14 +197,17 @@ public class GoodsReceiptService {
 
         Map<String, Object> receiptRow;
         try {
-            receiptRow = jdbcTemplate.queryForMap(
-                    "SELECT id, status, warehouse_id FROM public.goods_receipts WHERE id = ? AND warehouse_id = ? FOR UPDATE",
-                    receiptId,
-                    employee.warehouseId()
-            );
+            String sql = "SELECT id, status, warehouse_id FROM public.goods_receipts WHERE id = ?";
+            if (!employeeContextService.isAdmin(employee)) {
+                sql += " AND warehouse_id = ?";
+                receiptRow = jdbcTemplate.queryForMap(sql + " FOR UPDATE", receiptId, employee.warehouseId());
+            } else {
+                receiptRow = jdbcTemplate.queryForMap(sql + " FOR UPDATE", receiptId);
+            }
         } catch (EmptyResultDataAccessException ex) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy phiếu nhập kho");
         }
+        UUID warehouseId = UUID.fromString(String.valueOf(receiptRow.get("warehouse_id")));
 
         Object receiptStatus = receiptRow.get("status");
         if (receiptStatus == null) {
@@ -225,7 +253,7 @@ public class GoodsReceiptService {
                     DO UPDATE SET quantity = public.warehouse_stock.quantity + EXCLUDED.quantity,
                                   updated_at = now()
                     """,
-                    employee.warehouseId(),
+                    warehouseId,
                     product.getId(),
                     item.getQuantity()
             );
@@ -254,11 +282,13 @@ public class GoodsReceiptService {
 
         Map<String, Object> receiptRow;
         try {
-            receiptRow = jdbcTemplate.queryForMap(
-                    "SELECT status FROM public.goods_receipts WHERE id = ? AND warehouse_id = ? FOR UPDATE",
-                    receiptId,
-                    employee.warehouseId()
-            );
+            String sql = "SELECT status FROM public.goods_receipts WHERE id = ?";
+            if (!employeeContextService.isAdmin(employee)) {
+                sql += " AND warehouse_id = ?";
+                receiptRow = jdbcTemplate.queryForMap(sql + " FOR UPDATE", receiptId, employee.warehouseId());
+            } else {
+                receiptRow = jdbcTemplate.queryForMap(sql + " FOR UPDATE", receiptId);
+            }
         } catch (EmptyResultDataAccessException ex) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy phiếu nhập kho");
         }
@@ -268,8 +298,7 @@ public class GoodsReceiptService {
                     "Phiếu nhập cũ chưa được phân loại trạng thái; cần kiểm tra dữ liệu trước khi hủy");
         }
 
-        GoodsReceiptEntity receipt = goodsReceiptRepository.findByIdAndWarehouseId(receiptId, employee.warehouseId())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy phiếu nhập kho"));
+        GoodsReceiptEntity receipt = findReceipt(employee, receiptId);
         if (receipt.getStatus() != GoodsReceiptStatus.draft) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Chỉ có thể hủy phiếu ở trạng thái nháp");
         }
@@ -278,6 +307,25 @@ public class GoodsReceiptService {
         receipt.setCancelledAt(OffsetDateTime.now());
         goodsReceiptRepository.saveAndFlush(receipt);
         return toResponse(receipt);
+    }
+
+    private GoodsReceiptEntity findReceipt(EmployeeContext employee, UUID receiptId) {
+        return (employeeContextService.isAdmin(employee)
+                ? goodsReceiptRepository.findById(receiptId)
+                : goodsReceiptRepository.findByIdAndWarehouseId(receiptId, employee.warehouseId()))
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Không tìm thấy phiếu nhập kho"));
+    }
+
+    private void validateWarehouse(UUID warehouseId) {
+        Integer warehouseCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM public.warehouses WHERE id = ?",
+                Integer.class,
+                warehouseId);
+        if (warehouseCount == null || warehouseCount == 0) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy kho");
+        }
     }
 
     private GoodsReceiptResponse toResponse(GoodsReceiptEntity receipt) {

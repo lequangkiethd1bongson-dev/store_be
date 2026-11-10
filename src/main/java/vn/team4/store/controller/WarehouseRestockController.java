@@ -23,9 +23,10 @@ public class WarehouseRestockController {
             Authentication authentication,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) Integer page,
-            @RequestParam(required = false) Integer size
+            @RequestParam(required = false) Integer size,
+            @RequestParam(required = false) UUID warehouseId
     ) {
-        return warehouseRestockService.listRequests(authentication, status, page, size);
+        return warehouseRestockService.listRequests(authentication, status, page, size, warehouseId);
     }
 
     @GetMapping("/restock-requests/{requestId}")

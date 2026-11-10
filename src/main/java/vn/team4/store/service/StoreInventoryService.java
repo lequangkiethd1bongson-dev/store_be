@@ -1,12 +1,15 @@
 package vn.team4.store.service;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 import vn.team4.store.model.EmployeeContext;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.UUID;
 
 @Service
 public class StoreInventoryService {
@@ -20,7 +23,28 @@ public class StoreInventoryService {
     }
 
     public List<StoreProductResponse> getProductsForCurrentStore(Authentication authentication) {
+        return getProductsForCurrentStore(authentication, null);
+    }
+
+    public List<StoreProductResponse> getProductsForCurrentStore(
+            Authentication authentication,
+            UUID requestedStoreId) {
         EmployeeContext employee = employeeContextService.requireStoreEmployee(authentication);
+        UUID storeId = employeeContextService.resolveStoreScope(employee, requestedStoreId);
+        if (storeId == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Admin phải chọn storeId để xem tồn kho cửa hàng");
+        }
+        if (employeeContextService.isAdmin(employee)) {
+            Integer storeCount = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM public.stores WHERE id = ?",
+                    Integer.class,
+                    storeId);
+            if (storeCount == null || storeCount == 0) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy cửa hàng");
+            }
+        }
 
         String sql = """
                 SELECT p.id, p.name, p.barcode, p.image_url AS image_url,
@@ -47,7 +71,7 @@ public class StoreInventoryService {
                 rs.getInt("store_stock_quantity"),
                 rs.getInt("min_quantity"),
                 rs.getBoolean("low_stock")
-        ), employee.storeId());
+        ), storeId);
     }
 
     public record StoreProductResponse(

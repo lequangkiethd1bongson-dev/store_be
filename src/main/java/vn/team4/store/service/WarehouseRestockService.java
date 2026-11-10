@@ -30,8 +30,32 @@ public class WarehouseRestockService {
         this.employeeContextService = employeeContextService;
     }
 
-    public List<RestockRequestSummaryResponse> listRequests(Authentication authentication, String status, Integer page, Integer size) {
+    public List<RestockRequestSummaryResponse> listRequests(
+            Authentication authentication,
+            String status,
+            Integer page,
+            Integer size) {
+        return listRequests(authentication, status, page, size, null);
+    }
+
+    public List<RestockRequestSummaryResponse> listRequests(
+            Authentication authentication,
+            String status,
+            Integer page,
+            Integer size,
+            UUID requestedWarehouseId) {
         EmployeeContext employee = employeeContextService.requireWarehouseManager(authentication);
+        UUID warehouseScope = employeeContextService.resolveWarehouseScope(employee, requestedWarehouseId);
+        if (employeeContextService.isAdmin(employee) && warehouseScope != null) {
+            Integer warehouseCount = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM public.warehouses WHERE id = ?",
+                    Integer.class,
+                    warehouseScope
+            );
+            if (warehouseCount == null || warehouseCount == 0) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy kho");
+            }
+        }
 
         StringBuilder sql = new StringBuilder("""
                 SELECT r.id,
@@ -53,10 +77,13 @@ public class WarehouseRestockService {
                 JOIN public.warehouses w ON w.id = r.warehouse_id
                 LEFT JOIN public.employees e ON e.id = r.created_by
                 LEFT JOIN public.restock_request_items i ON i.request_id = r.id
-                WHERE r.warehouse_id = ?
+                WHERE 1 = 1
                 """);
         List<Object> params = new java.util.ArrayList<>();
-        params.add(employee.warehouseId());
+        if (warehouseScope != null) {
+            sql.append(" AND r.warehouse_id = ? ");
+            params.add(warehouseScope);
+        }
 
         if (status != null && !status.isBlank()) {
             String normalizedStatus = status.trim().toLowerCase(java.util.Locale.ROOT);
@@ -102,47 +129,52 @@ public class WarehouseRestockService {
     public RestockRequestDetailResponse getRequestDetail(Authentication authentication, UUID requestId) {
         EmployeeContext employee = employeeContextService.requireWarehouseManager(authentication);
 
+        StringBuilder sql = new StringBuilder("""
+                SELECT r.id,
+                       r.store_id,
+                       s.name AS store_name,
+                       r.warehouse_id,
+                       w.name AS warehouse_name,
+                       r.status,
+                       r.note,
+                       r.reject_reason,
+                       r.created_by,
+                       ec.full_name AS created_by_name,
+                       r.approved_by,
+                       ea.full_name AS approved_by_name,
+                       ex.id AS export_id,
+                       ex.status AS export_status,
+                       ex.created_at AS export_created_at,
+                       ex.received_at,
+                       er.full_name AS received_by_name,
+                       ex.created_by AS export_created_by_id,
+                       ee.full_name AS export_created_by_name,
+                       r.created_at,
+                       r.approved_at
+                FROM public.restock_requests r
+                JOIN public.stores s ON s.id = r.store_id
+                JOIN public.warehouses w ON w.id = r.warehouse_id
+                LEFT JOIN public.employees ec ON ec.id = r.created_by
+                LEFT JOIN public.employees ea ON ea.id = r.approved_by
+                LEFT JOIN public.stock_exports ex ON ex.request_id = r.id
+                LEFT JOIN public.employees ee ON ee.id = ex.created_by
+                LEFT JOIN public.employees er ON er.id = ex.received_by
+                WHERE r.id = ?
+                """);
+        List<Object> queryParams = new java.util.ArrayList<>();
+        queryParams.add(requestId);
+        if (!employeeContextService.isAdmin(employee)) {
+            sql.append(" AND r.warehouse_id = ?");
+            queryParams.add(employee.warehouseId());
+        }
+
         Map<String, Object> row;
         try {
-            row = jdbcTemplate.queryForMap(
-                    """
-                    SELECT r.id,
-                           r.store_id,
-                           s.name AS store_name,
-                           r.warehouse_id,
-                           w.name AS warehouse_name,
-                           r.status,
-                           r.note,
-                           r.reject_reason,
-                           r.created_by,
-                           ec.full_name AS created_by_name,
-                           r.approved_by,
-                           ea.full_name AS approved_by_name,
-                           ex.id AS export_id,
-                           ex.status AS export_status,
-                           ex.created_at AS export_created_at,
-                           ex.received_at,
-                           er.full_name AS received_by_name,
-                           ex.created_by AS export_created_by_id,
-                           ee.full_name AS export_created_by_name,
-                           r.created_at,
-                           r.approved_at
-                    FROM public.restock_requests r
-                    JOIN public.stores s ON s.id = r.store_id
-                    JOIN public.warehouses w ON w.id = r.warehouse_id
-                    LEFT JOIN public.employees ec ON ec.id = r.created_by
-                    LEFT JOIN public.employees ea ON ea.id = r.approved_by
-                    LEFT JOIN public.stock_exports ex ON ex.request_id = r.id
-                    LEFT JOIN public.employees ee ON ee.id = ex.created_by
-                    LEFT JOIN public.employees er ON er.id = ex.received_by
-                    WHERE r.id = ? AND r.warehouse_id = ?
-                    """,
-                    requestId,
-                    employee.warehouseId()
-            );
+            row = jdbcTemplate.queryForMap(sql.toString(), queryParams.toArray());
         } catch (EmptyResultDataAccessException ex) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy yêu cầu thuộc kho hiện tại");
         }
+        UUID requestWarehouseId = UUID.fromString(String.valueOf(row.get("warehouse_id")));
 
         List<RestockRequestItemDetail> items = jdbcTemplate.query(
                 """
@@ -172,7 +204,7 @@ public class WarehouseRestockService {
                         rs.getInt("warehouse_stock_quantity"),
                         rs.getBoolean("is_active")
                 ),
-                employee.warehouseId(),
+                requestWarehouseId,
                 requestId
         );
 
@@ -216,9 +248,7 @@ public class WarehouseRestockService {
         }
 
         UUID requestWarehouseId = UUID.fromString(String.valueOf(requestRow.get("warehouse_id")));
-        if (!requestWarehouseId.equals(employee.warehouseId())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Bạn không có quyền duyệt phiếu của kho khác");
-        }
+        employeeContextService.requireWarehouseAccess(employee, requestWarehouseId);
         if (!"pending".equals(String.valueOf(requestRow.get("status")))) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Phiếu không ở trạng thái pending");
         }
@@ -286,9 +316,7 @@ public class WarehouseRestockService {
         }
 
         UUID requestWarehouseId = UUID.fromString(String.valueOf(requestRow.get("warehouse_id")));
-        if (!requestWarehouseId.equals(employee.warehouseId())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Bạn không có quyền từ chối phiếu của kho khác");
-        }
+        employeeContextService.requireWarehouseAccess(employee, requestWarehouseId);
         String status = String.valueOf(requestRow.get("status"));
         if (!"pending".equals(status) && !"approved".equals(status)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Chỉ có thể huỷ phiếu đang pending hoặc approved");
@@ -343,9 +371,7 @@ public class WarehouseRestockService {
         }
 
         UUID requestWarehouseId = UUID.fromString(String.valueOf(requestRow.get("warehouse_id")));
-        if (!requestWarehouseId.equals(employee.warehouseId())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Bạn không có quyền xuất kho cho phiếu của kho khác");
-        }
+        employeeContextService.requireWarehouseAccess(employee, requestWarehouseId);
         if (!"approved".equals(String.valueOf(requestRow.get("status")))) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Chỉ có thể xuất kho cho phiếu đã duyệt");
         }
@@ -381,7 +407,7 @@ public class WarehouseRestockService {
                     java.util.List.of()
             );
         }
-        validateScannedItems(requestId, request.scannedItems(), approvedItems, employee.warehouseId());
+        validateScannedItems(requestId, request.scannedItems(), approvedItems, requestWarehouseId);
 
         for (Map<String, Object> item : approvedItems) {
             UUID productId = UUID.fromString(String.valueOf(item.get("product_id")));
@@ -391,7 +417,7 @@ public class WarehouseRestockService {
                 currentQuantity = jdbcTemplate.queryForObject(
                         "SELECT quantity FROM public.warehouse_stock WHERE warehouse_id = ? AND product_id = ? FOR UPDATE",
                         Integer.class,
-                        employee.warehouseId(),
+                        requestWarehouseId,
                         productId
                 );
             } catch (EmptyResultDataAccessException ex) {
@@ -409,7 +435,7 @@ public class WarehouseRestockService {
                     "INSERT INTO public.stock_exports (id, request_id, warehouse_id, store_id, status, created_by, created_at) VALUES (?, ?, ?, ?, 'shipping', ?, now())",
                     exportId,
                     requestId,
-                    employee.warehouseId(),
+                    requestWarehouseId,
                     storeId,
                     employee.id()
             );
@@ -421,7 +447,7 @@ public class WarehouseRestockService {
                 int updated = jdbcTemplate.update(
                         "UPDATE public.warehouse_stock SET quantity = quantity - ?, updated_at = now() WHERE warehouse_id = ? AND product_id = ? AND quantity >= ?",
                         approvedQuantity,
-                        employee.warehouseId(),
+                        requestWarehouseId,
                         productId,
                         approvedQuantity
                 );
@@ -429,7 +455,7 @@ public class WarehouseRestockService {
                     Integer available = jdbcTemplate.queryForObject(
                             "SELECT quantity FROM public.warehouse_stock WHERE warehouse_id = ? AND product_id = ?",
                             Integer.class,
-                            employee.warehouseId(),
+                            requestWarehouseId,
                             productId
                     );
                     throw insufficientStock(productId, approvedQuantity, available == null ? 0 : available);
@@ -450,7 +476,7 @@ public class WarehouseRestockService {
         } catch (DataAccessException ex) {
             String message = ex.getMostSpecificCause() != null ? ex.getMostSpecificCause().getMessage() : ex.getMessage();
             if (message != null && message.toUpperCase(Locale.ROOT).contains("INSUFFICIENT_STOCK")) {
-                throw extractInsufficientStockError(message, approvedItems, employee.warehouseId());
+                throw extractInsufficientStockError(message, approvedItems, requestWarehouseId);
             }
             throw ex;
         }

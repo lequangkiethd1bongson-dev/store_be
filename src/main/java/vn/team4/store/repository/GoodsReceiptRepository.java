@@ -12,9 +12,13 @@ import java.util.UUID;
 @Repository
 public interface GoodsReceiptRepository extends JpaRepository<GoodsReceiptEntity, UUID> {
 
+    List<GoodsReceiptEntity> findAllByOrderByCreatedAtDesc();
+
     List<GoodsReceiptEntity> findByWarehouseIdOrderByCreatedAtDesc(UUID warehouseId);
 
     List<GoodsReceiptEntity> findByWarehouseIdAndStatusOrderByCreatedAtDesc(UUID warehouseId, GoodsReceiptStatus status);
+
+    List<GoodsReceiptEntity> findByStatusOrderByCreatedAtDesc(GoodsReceiptStatus status);
 
     Optional<GoodsReceiptEntity> findByIdAndWarehouseId(UUID id, UUID warehouseId);
 }

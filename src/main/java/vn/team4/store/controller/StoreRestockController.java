@@ -36,9 +36,10 @@ public class StoreRestockController {
     @GetMapping("/restock-requests")
     public List<StoreRestockService.RestockRequestSummaryResponse> listRequests(
             Authentication authentication,
-            @RequestParam(required = false) String status
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) UUID storeId
     ) {
-        return storeRestockService.listRequests(authentication, status);
+        return storeRestockService.listRequests(authentication, status, storeId);
     }
 
     @GetMapping("/restock-requests/{requestId}")

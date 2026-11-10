@@ -14,5 +14,10 @@ public record GoodsReceiptRequest(
         @NotNull(message = "Nhà cung cấp là bắt buộc") UUID supplierId,
         @Size(max = 1000, message = "Ghi chú tối đa 1000 ký tự") String note,
         @JsonAlias({"items"})
-        @NotEmpty(message = "Phiếu nhập phải có ít nhất một sản phẩm") List<@Valid GoodsReceiptItemRequest> items) {
+        @NotEmpty(message = "Phiếu nhập phải có ít nhất một sản phẩm") List<@Valid GoodsReceiptItemRequest> items,
+        @JsonAlias({"warehouse_id"}) UUID warehouseId) {
+
+    public GoodsReceiptRequest(UUID supplierId, String note, List<GoodsReceiptItemRequest> items) {
+        this(supplierId, note, items, null);
+    }
 }

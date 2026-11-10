@@ -2,11 +2,13 @@ package vn.team4.store.controller;
 
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import vn.team4.store.service.StoreInventoryService;
 
 import java.util.List;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/store")
@@ -19,7 +21,9 @@ public class StoreInventoryController {
     }
 
     @GetMapping("/products")
-    public List<StoreInventoryService.StoreProductResponse> getProducts(Authentication authentication) {
-        return storeInventoryService.getProductsForCurrentStore(authentication);
+    public List<StoreInventoryService.StoreProductResponse> getProducts(
+            Authentication authentication,
+            @RequestParam(required = false) UUID storeId) {
+        return storeInventoryService.getProductsForCurrentStore(authentication, storeId);
     }
 }

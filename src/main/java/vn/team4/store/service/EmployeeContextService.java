@@ -64,6 +64,9 @@ public class EmployeeContextService {
 
     public EmployeeContext requireStoreEmployee(Authentication authentication) {
         EmployeeContext employee = requireAuthenticatedEmployee(authentication);
+        if (isAdmin(employee)) {
+            return employee;
+        }
         if (employee.storeId() == null) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Nhân viên chưa được gán cửa hàng");
         }
@@ -75,6 +78,9 @@ public class EmployeeContextService {
 
     public EmployeeContext requireWarehouseEmployee(Authentication authentication) {
         EmployeeContext employee = requireAuthenticatedEmployee(authentication);
+        if (isAdmin(employee)) {
+            return employee;
+        }
         if (employee.warehouseId() == null) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Nhân viên chưa được gán kho");
         }
@@ -86,6 +92,9 @@ public class EmployeeContextService {
 
     public EmployeeContext requireStoreManager(Authentication authentication) {
         EmployeeContext employee = requireAuthenticatedEmployee(authentication);
+        if (isAdmin(employee)) {
+            return employee;
+        }
         if (!"store_manager".equals(employee.role())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Chỉ quản lý cửa hàng mới được thực hiện thao tác này");
         }
@@ -97,6 +106,9 @@ public class EmployeeContextService {
 
     public EmployeeContext requireWarehouseManager(Authentication authentication) {
         EmployeeContext employee = requireAuthenticatedEmployee(authentication);
+        if (isAdmin(employee)) {
+            return employee;
+        }
         if (!"kho_manager".equals(employee.role())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Chỉ kho manager mới được thực hiện thao tác này");
         }
@@ -108,6 +120,9 @@ public class EmployeeContextService {
 
     public EmployeeContext requireWarehouseManagerOrStaff(Authentication authentication) {
         EmployeeContext employee = requireAuthenticatedEmployee(authentication);
+        if (isAdmin(employee)) {
+            return employee;
+        }
         if (!Set.of("kho_manager", "kho").contains(employee.role())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Chỉ nhân viên kho mới được thực hiện thao tác này");
         }
@@ -115,5 +130,40 @@ public class EmployeeContextService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Tài khoản kho chưa được gán kho");
         }
         return employee;
+    }
+
+    public UUID resolveStoreScope(EmployeeContext employee, UUID requestedStoreId) {
+        if (isAdmin(employee)) {
+            return requestedStoreId;
+        }
+        requireStoreAccess(employee, requestedStoreId == null ? employee.storeId() : requestedStoreId);
+        return employee.storeId();
+    }
+
+    public UUID resolveWarehouseScope(EmployeeContext employee, UUID requestedWarehouseId) {
+        if (isAdmin(employee)) {
+            return requestedWarehouseId;
+        }
+        requireWarehouseAccess(
+                employee,
+                requestedWarehouseId == null ? employee.warehouseId() : requestedWarehouseId);
+        return employee.warehouseId();
+    }
+
+    public void requireStoreAccess(EmployeeContext employee, UUID targetStoreId) {
+        if (!isAdmin(employee) && (targetStoreId == null || !targetStoreId.equals(employee.storeId()))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Bạn không có quyền truy cập dữ liệu cửa hàng này");
+        }
+    }
+
+    public void requireWarehouseAccess(EmployeeContext employee, UUID targetWarehouseId) {
+        if (!isAdmin(employee)
+                && (targetWarehouseId == null || !targetWarehouseId.equals(employee.warehouseId()))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Bạn không có quyền truy cập dữ liệu kho này");
+        }
+    }
+
+    public boolean isAdmin(EmployeeContext employee) {
+        return "admin".equals(employee.role());
     }
 }

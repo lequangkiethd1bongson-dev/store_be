@@ -102,7 +102,16 @@ public class EmployeeAuthorizationFilter extends OncePerRequestFilter {
     
     private List<SimpleGrantedAuthority> authoritiesFor(String role) {
         return switch (role) {
-            case "admin" -> List.of(new SimpleGrantedAuthority("ROLE_ADMIN"));
+            // Keep ROLE_ADMIN for admin-only APIs while granting the existing role gates.
+            case "admin" -> List.of(
+                    new SimpleGrantedAuthority("ROLE_ADMIN"),
+                    new SimpleGrantedAuthority("ROLE_STORE_MANAGER"),
+                    new SimpleGrantedAuthority("ROLE_SALES"),
+                    new SimpleGrantedAuthority("ROLE_KHO_MANAGER"),
+                    new SimpleGrantedAuthority("ROLE_KHO"),
+                    new SimpleGrantedAuthority("ROLE_STAFF"),
+                    new SimpleGrantedAuthority("ROLE_SALES_STAFF"),
+                    new SimpleGrantedAuthority("ROLE_WAREHOUSE_STAFF"));
             case "store_manager" -> List.of(
                     new SimpleGrantedAuthority("ROLE_STORE_MANAGER"),
                     new SimpleGrantedAuthority("ROLE_STAFF"),
