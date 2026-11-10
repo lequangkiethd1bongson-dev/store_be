@@ -47,5 +47,12 @@ class StoreBeApplicationTests {
         assertTrue(paths.contains("/api/warehouse/restock-requests/{requestId}/approve"));
         assertTrue(paths.contains("/api/warehouse/restock-requests/{requestId}/reject"));
         assertTrue(paths.contains("/api/warehouse/restock-requests/{requestId}/export"));
+        assertTrue(paths.contains("/api/stores"));
+        assertTrue(paths.contains("/api/admin/stores/revenue"));
+        assertTrue(paths.contains("/api/admin/employees"));
+        assertTrue(paths.contains("/api/admin/employees/{id}"));
+        assertTrue(paths.contains("/api/admin/attendance"));
+        assertTrue(paths.contains("/api/admin/attendance/status"));
+        assertTrue(paths.contains("/api/admin/statistics/facilities"));
     }
 }

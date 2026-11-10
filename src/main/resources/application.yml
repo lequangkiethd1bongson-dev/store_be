@@ -5,19 +5,23 @@ server:
 spring:
   application:
     name: store-be
+  config:
+    import:
+      - optional:file:.env[.properties]
+      - optional:file:store_be/.env[.properties]
 
   datasource:
-    url: ${SUPABASE_DB_URL}
+    url: ${SUPABASE_DB_URL:jdbc:postgresql://aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres?sslmode=require}
     driver-class-name: org.postgresql.Driver
-    username: ${SUPABASE_DB_USERNAME}
-    password: ${SUPABASE_DB_PASSWORD}
+    username: ${SUPABASE_DB_USERNAME:postgres.imtbcjdrnvjbmdxvnunh}
+    password: ${SUPABASE_DB_PASSWORD:}
 
   security:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: ${SUPABASE_JWT_ISSUER}
-          jwk-set-uri: ${SUPABASE_JWKS_URI}
+          issuer-uri: ${SUPABASE_JWT_ISSUER:https://imtbcjdrnvjbmdxvnunh.supabase.co/auth/v1}
+          jwk-set-uri: ${SUPABASE_JWKS_URI:https://imtbcjdrnvjbmdxvnunh.supabase.co/auth/v1/.well-known/jwks.json}
           jws-algorithms:
             - ES256
 

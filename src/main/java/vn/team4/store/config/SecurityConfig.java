@@ -145,15 +145,20 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/me")
                         .authenticated()
 
-                        // API kho hàng
-                        .requestMatchers(HttpMethod.GET, "/api/warehouses")
+                        // API kho hàng & cửa hàng
+                        .requestMatchers(HttpMethod.GET, "/api/warehouses", "/api/stores", "/api/stores/**")
                         .hasAnyRole(
                                 "ADMIN",
                                 "STORE_MANAGER",
+                                "SALES",
                                 "KHO_MANAGER",
                                 "KHO",
                                 "WAREHOUSE_STAFF"
                         )
+
+                        // API quản trị nhân sự, chấm công, doanh thu cửa hàng & thống kê cơ sở (Admin)
+                        .requestMatchers("/api/admin/**")
+                        .hasRole("ADMIN")
 
                         .requestMatchers(HttpMethod.GET, "/api/store/products")
                         .hasAnyRole("STORE_MANAGER", "SALES")
