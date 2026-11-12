@@ -3,6 +3,7 @@ param(
     [string]$Password = ""
 )
 
+Set-Location $PSScriptRoot
 $envFile = Join-Path $PSScriptRoot ".env"
 if (Test-Path $envFile) {
     Get-Content $envFile | ForEach-Object {
@@ -20,6 +21,21 @@ if (Test-Path $envFile) {
 
 if ($Password) {
     $env:SUPABASE_DB_PASSWORD = $Password
+}
+
+if (-not $env:JAVA_HOME -and (Test-Path "C:\Program Files\Android\Android Studio\jbr")) {
+    $env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr"
+}
+
+$existingConn = Get-NetTCPConnection -LocalPort 8080 -State Listen -ErrorAction SilentlyContinue
+if ($existingConn) {
+    foreach ($pidToStop in ($existingConn.OwningProcess | Select-Object -Unique)) {
+        if ($pidToStop -gt 0) {
+            Write-Host "Stopping existing process on port 8080 (PID: $pidToStop)..." -ForegroundColor Yellow
+            Stop-Process -Id $pidToStop -Force -ErrorAction SilentlyContinue
+        }
+    }
+    Start-Sleep -Seconds 1
 }
 
 Write-Host "Connecting to Supabase Database..." -ForegroundColor Cyan

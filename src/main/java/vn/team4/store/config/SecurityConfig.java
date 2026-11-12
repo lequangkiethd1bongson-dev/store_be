@@ -141,7 +141,10 @@ public class SecurityConfig {
                         )
                         .hasRole("ADMIN")
 
-                        // Thông tin nhân viên đang đăng nhập
+                        // Thông tin nhân viên đang đăng nhập & đăng nhập dự phòng qua Backend Proxy
+                        .requestMatchers(HttpMethod.POST, "/api/auth/login", "/api/auth/register")
+                        .permitAll()
+
                         .requestMatchers("/api/auth/me")
                         .authenticated()
 

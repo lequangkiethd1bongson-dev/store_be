@@ -1,6 +1,7 @@
 package vn.team4.store.controller;
 
 import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -61,12 +62,22 @@ public class AdminManagementController {
         return adminManagementService.getEmployeeById(id);
     }
 
+    @PostMapping("/admin/employees")
+    public Map<String, Object> createEmployee(@RequestBody Map<String, Object> body) {
+        return adminManagementService.createEmployee(body);
+    }
+
     @PutMapping("/admin/employees/{id}")
     public Map<String, Object> updateEmployee(
             @PathVariable UUID id,
             @RequestBody Map<String, Object> body
     ) {
         return adminManagementService.updateEmployee(id, body);
+    }
+
+    @DeleteMapping("/admin/employees/{id}")
+    public Map<String, Object> deleteEmployee(@PathVariable UUID id) {
+        return adminManagementService.deleteEmployee(id);
     }
 
     @PatchMapping("/admin/employees/{id}/status")

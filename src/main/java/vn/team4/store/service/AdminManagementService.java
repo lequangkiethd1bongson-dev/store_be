@@ -280,13 +280,13 @@ public class AdminManagementService {
                 FROM public.employees e
                 LEFT JOIN public.stores s ON s.id = e.store_id
                 LEFT JOIN public.warehouses w ON w.id = e.warehouse_id
-                LEFT JOIN public.employee_shifts sh ON sh.employee_id = e.id AND sh.work_date = ?
+                LEFT JOIN public.employee_shifts sh ON sh.employee_id = e.id AND sh.work_date = ?::date
                 LEFT JOIN public.employee_timesheets ts ON ts.employee_id = e.id AND ts.month_year = ?
                 WHERE 1=1
                 """);
 
         List<Object> params = new ArrayList<>();
-        params.add(Date.valueOf(today));
+        params.add(today.toString());
         params.add(currentMonth);
 
         if (role != null && !role.isBlank() && !"ALL".equalsIgnoreCase(role)) {
@@ -468,6 +468,228 @@ public class AdminManagementService {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("isActive", isActive);
         return updateEmployee(id, body);
+    }
+
+    public Map<String, Object> createEmployee(Map<String, Object> body) {
+        ensureSchemaAndSeedData();
+
+        String fullName = strOrDefault(body.get("fullName"), "").trim();
+        String email = strOrDefault(body.get("email"), "").trim().toLowerCase(Locale.ROOT);
+        String phone = strOrDefault(body.get("phone"), "").trim();
+        String password = strOrDefault(body.get("password"), "").trim();
+        if (password.isEmpty()) {
+            password = "123456";
+        }
+        if (fullName.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Họ và tên không được để trống");
+        }
+        if (email.isEmpty() || !email.contains("@")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Địa chỉ email không hợp lệ");
+        }
+        if (password.length() < 6) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Mật khẩu phải có ít nhất 6 ký tự");
+        }
+
+        // Kiểm tra email đã tồn tại trong auth.users chưa
+        Integer existingCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM auth.users WHERE LOWER(email) = ?",
+                Integer.class,
+                email
+        );
+        if (existingCount != null && existingCount > 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Email '" + email + "' đã tồn tại trong hệ thống");
+        }
+
+        String role = normalizeRole(strOrDefault(body.get("role"), "sales"));
+        boolean isActive = body.get("isActive") == null
+                || Boolean.parseBoolean(String.valueOf(body.get("isActive")));
+
+        String branchRaw = strOrDefault(body.get("branch"), strOrDefault(body.get("storeName"), strOrDefault(body.get("warehouseName"), "")));
+        UUID storeId = null;
+        UUID warehouseId = null;
+
+        if ("admin".equals(role)) {
+            storeId = null;
+            warehouseId = null;
+        } else if ("store_manager".equals(role) || "sales".equals(role)) {
+            String sidStr = strOrDefault(body.get("storeId"), branchRaw);
+            storeId = findStoreIdByNameOrId(sidStr);
+            warehouseId = null;
+        } else if ("kho_manager".equals(role) || "kho".equals(role)) {
+            String widStr = strOrDefault(body.get("warehouseId"), branchRaw);
+            warehouseId = findWarehouseIdByNameOrId(widStr);
+            storeId = null;
+        }
+
+        UUID newUserId = UUID.randomUUID();
+
+        // 1. Chèn vào auth.users (mật khẩu mã hóa bằng crypt / pgcrypto của Supabase)
+        try {
+            jdbcTemplate.update("""
+                    INSERT INTO auth.users (
+                        instance_id,
+                        id,
+                        aud,
+                        role,
+                        email,
+                        encrypted_password,
+                        email_confirmed_at,
+                        raw_app_meta_data,
+                        raw_user_meta_data,
+                        created_at,
+                        updated_at,
+                        confirmation_token,
+                        recovery_token,
+                        email_change_token_new,
+                        email_change
+                    ) VALUES (
+                        '00000000-0000-0000-0000-000000000000',
+                        ?,
+                        'authenticated',
+                        'authenticated',
+                        ?,
+                        extensions.crypt(?, extensions.gen_salt('bf')),
+                        now(),
+                        '{"provider":"email","providers":["email"]}'::jsonb,
+                        jsonb_build_object('full_name', ?::text, 'phone', ?::text),
+                        now(),
+                        now(),
+                        '', '', '', ''
+                    )
+                    """,
+                    newUserId, email, password, fullName, phone
+            );
+        } catch (Exception ex) {
+            jdbcTemplate.update("""
+                    INSERT INTO auth.users (
+                        instance_id,
+                        id,
+                        aud,
+                        role,
+                        email,
+                        encrypted_password,
+                        email_confirmed_at,
+                        raw_app_meta_data,
+                        raw_user_meta_data,
+                        created_at,
+                        updated_at,
+                        confirmation_token,
+                        recovery_token,
+                        email_change_token_new,
+                        email_change
+                    ) VALUES (
+                        '00000000-0000-0000-0000-000000000000',
+                        ?,
+                        'authenticated',
+                        'authenticated',
+                        ?,
+                        crypt(?, gen_salt('bf')),
+                        now(),
+                        '{"provider":"email","providers":["email"]}'::jsonb,
+                        jsonb_build_object('full_name', ?::text, 'phone', ?::text),
+                        now(),
+                        now(),
+                        '', '', '', ''
+                    )
+                    """,
+                    newUserId, email, password, fullName, phone
+            );
+        }
+
+        // 2. Chèn vào auth.identities để hỗ trợ đăng nhập chuẩn Supabase Auth
+        try {
+            jdbcTemplate.update("""
+                    INSERT INTO auth.identities (
+                        id,
+                        user_id,
+                        identity_data,
+                        provider,
+                        provider_id,
+                        last_sign_in_at,
+                        created_at,
+                        updated_at
+                    ) VALUES (
+                        ?,
+                        ?,
+                        jsonb_build_object('sub', ?::text, 'email', ?::text),
+                        'email',
+                        ?,
+                        now(),
+                        now(),
+                        now()
+                    ) ON CONFLICT DO NOTHING
+                    """,
+                    newUserId.toString(), newUserId, newUserId.toString(), email, email
+            );
+        } catch (Exception ignored) {
+        }
+
+        // 3. Upsert vào public.employees (kèm vai trò, cơ sở và trạng thái hoạt động)
+        jdbcTemplate.update("""
+                INSERT INTO public.employees (
+                    id, full_name, email, phone, role, store_id, warehouse_id, is_active, created_at
+                ) VALUES (
+                    ?, ?, ?, ?, ?::public.user_role, ?, ?, ?, now()
+                ) ON CONFLICT (id) DO UPDATE SET
+                    full_name = EXCLUDED.full_name,
+                    email = EXCLUDED.email,
+                    phone = EXCLUDED.phone,
+                    role = EXCLUDED.role,
+                    store_id = EXCLUDED.store_id,
+                    warehouse_id = EXCLUDED.warehouse_id,
+                    is_active = EXCLUDED.is_active
+                """,
+                newUserId, fullName, email, phone, role, storeId, warehouseId, isActive
+        );
+
+        // 4. Nếu là quản lý cửa hàng hoặc kho, gán manager_id
+        try {
+            if ("store_manager".equals(role) && storeId != null && isActive) {
+                jdbcTemplate.update("UPDATE public.stores SET manager_id = ? WHERE id = ?", newUserId, storeId);
+            } else if ("kho_manager".equals(role) && warehouseId != null && isActive) {
+                jdbcTemplate.update("UPDATE public.warehouses SET manager_id = ? WHERE id = ?", newUserId, warehouseId);
+            }
+        } catch (Exception ignored) {
+        }
+
+        // 5. Khởi tạo ca làm việc và bảng công mặc định
+        try {
+            jdbcTemplate.update("""
+                    INSERT INTO public.employee_shifts (employee_id, work_date, shift_code, store_id, warehouse_id)
+                    VALUES (?, CURRENT_DATE, 'SHIFT_1', ?, ?)
+                    ON CONFLICT (employee_id, work_date) DO NOTHING
+                    """,
+                    newUserId, storeId, warehouseId
+            );
+            jdbcTemplate.update("""
+                    INSERT INTO public.employee_timesheets (employee_id, month_year, work_days, standard_days, status)
+                    VALUES (?, to_char(CURRENT_DATE, 'YYYY-MM'), 0, 26, 'PENDING')
+                    ON CONFLICT (employee_id, month_year) DO NOTHING
+                    """,
+                    newUserId
+            );
+        } catch (Exception ignored) {
+        }
+
+        return getEmployeeById(newUserId);
+    }
+
+    public Map<String, Object> deleteEmployee(UUID id) {
+        ensureSchemaAndSeedData();
+        try {
+            jdbcTemplate.update("UPDATE public.stores SET manager_id = NULL WHERE manager_id = ?", id);
+            jdbcTemplate.update("UPDATE public.warehouses SET manager_id = NULL WHERE manager_id = ?", id);
+            jdbcTemplate.update("DELETE FROM public.employee_shifts WHERE employee_id = ?", id);
+            jdbcTemplate.update("DELETE FROM public.employee_timesheets WHERE employee_id = ?", id);
+            jdbcTemplate.update("DELETE FROM public.employees WHERE id = ?", id);
+            jdbcTemplate.update("DELETE FROM auth.users WHERE id = ?", id);
+        } catch (Exception e) {
+            jdbcTemplate.update("DELETE FROM public.employees WHERE id = ?", id);
+        }
+        Map<String, Object> res = new LinkedHashMap<>();
+        res.put("success", true);
+        res.put("message", "Đã xóa tài khoản nhân viên thành công.");
+        return res;
     }
 
     // =========================================================================
@@ -740,7 +962,7 @@ public class AdminManagementService {
                 JOIN public.employees e ON e.id = sh.employee_id
                 LEFT JOIN public.stores s ON s.id = sh.store_id
                 LEFT JOIN public.warehouses w ON w.id = sh.warehouse_id
-                WHERE sh.work_date BETWEEN ? AND ?
+                WHERE sh.work_date BETWEEN ?::date AND ?::date
                 ORDER BY sh.work_date ASC, e.full_name ASC
                 """;
 
@@ -761,7 +983,7 @@ public class AdminManagementService {
             m.put("warehouseName", rs.getString("warehouse_name"));
             m.put("note", rs.getString("note"));
             return m;
-        }, Date.valueOf(start), Date.valueOf(end));
+        }, start.toString(), end.toString());
     }
 
     public Map<String, Object> assignShift(Map<String, Object> body) {
@@ -1138,6 +1360,32 @@ public class AdminManagementService {
                 (rs, rowNum) -> UUID.fromString(rs.getString("id"))
         );
         return ids.isEmpty() ? null : ids.get(0);
+    }
+
+    private UUID findStoreIdByNameOrId(String val) {
+        if (val == null || val.isBlank()) return findFirstStoreId();
+        try {
+            return UUID.fromString(val.trim());
+        } catch (IllegalArgumentException ignored) {}
+        List<UUID> ids = jdbcTemplate.query(
+                "SELECT id FROM public.stores WHERE is_active = true AND (LOWER(name) = LOWER(?) OR LOWER(name) LIKE ?) LIMIT 1",
+                (rs, rowNum) -> UUID.fromString(rs.getString("id")),
+                val.trim(), "%" + val.trim().toLowerCase(Locale.ROOT) + "%"
+        );
+        return ids.isEmpty() ? findFirstStoreId() : ids.get(0);
+    }
+
+    private UUID findWarehouseIdByNameOrId(String val) {
+        if (val == null || val.isBlank()) return findFirstWarehouseId();
+        try {
+            return UUID.fromString(val.trim());
+        } catch (IllegalArgumentException ignored) {}
+        List<UUID> ids = jdbcTemplate.query(
+                "SELECT id FROM public.warehouses WHERE is_active = true AND (LOWER(name) = LOWER(?) OR LOWER(name) LIKE ?) LIMIT 1",
+                (rs, rowNum) -> UUID.fromString(rs.getString("id")),
+                val.trim(), "%" + val.trim().toLowerCase(Locale.ROOT) + "%"
+        );
+        return ids.isEmpty() ? findFirstWarehouseId() : ids.get(0);
     }
 
     public static String normalizeRole(String raw) {
